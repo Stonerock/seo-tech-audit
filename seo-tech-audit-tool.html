@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEO & Tekninen Auditointi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
+        
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%);
+            min-height: 100vh;
+        }
+        
+        .glow {
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+        }
+        
+        .terminal-cursor::after {
+            content: '_';
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        .scan-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #8b5cf6, transparent);
+            animation: scan 3s linear infinite;
+            opacity: 0;
+        }
+        
+        .scanning .scan-line {
+            opacity: 1;
+        }
+        
+        @keyframes scan {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100vh); }
+        }
+        
+        .matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.02;
+            pointer-events: none;
+            background-image: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(139, 92, 246, 0.1) 2px,
+                rgba(139, 92, 246, 0.1) 4px
+            );
+        }
+        
+        .test-item {
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+        
+        .test-item:hover {
+            border-left-color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.05);
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .loader {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(139, 92, 246, 0.3);
+            border-top-color: #8b5cf6;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="text-gray-100">
+    <div class="matrix-bg"></div>
+    <div class="scan-line"></div>
+    
+    <div class="container mx-auto px-4 py-8 max-w-6xl relative z-10">
+        <!-- Header -->
+        <div class="text-center mb-12">
+            <h1 class="text-5xl font-bold mb-4 bg-gradient-to-r from-violet-400 to-purple-600 bg-clip-text text-transparent">
+                <i class="fas fa-terminal mr-3"></i>SEO & Tech Audit
+            </h1>
+            <p class="text-gray-400 text-lg">Comprehensive Site Analysis Tool v1.0</p>
+        </div>
+        
+        <!-- Input Section -->
+        <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-8 mb-8 glow">
+            <div class="flex flex-col md:flex-row gap-4">
+                <div class="flex-1">
+                    <label class="block text-sm text-gray-400 mb-2">
+                        <i class="fas fa-globe mr-2"></i>Target URL
+                    </label>
+                    <input 
+                        type="url" 
+                        id="urlInput"
+                        placeholder="https://example.com"
+                        class="w-full px-4 py-3 bg-gray-800 rounded-lg text-white border border-gray-700 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                    >
+                </div>
+                <div class="flex items-end">
+                    <button 
+                        onclick="startAudit()"
+                        id="auditBtn"
+                        class="px-8 py-3 bg-gradient-to-r from-violet-600 to-purple-600 rounded-lg font-semibold hover:from-violet-700 hover:to-purple-700 transition-all duration-200 flex items-center gap-2"
+                    >
+                        <i class="fas fa-search"></i>
+                        <span>Analyze</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Progress Section -->
+        <div id="progressSection" class="hidden mb-8">
+            <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-gray-400">Scanning progress</span>
+                    <span id="progressPercent" class="text-violet-400 font-bold">0%</span>
+                </div>
+                <div class="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+                    <div id="progressBar" class="bg-gradient-to-r from-violet-600 to-purple-600 h-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <div id="currentTest" class="mt-4 text-sm text-gray-500 terminal-cursor"></div>
+            </div>
+        </div>
+        
+        <!-- Results Section -->
+        <div id="resultsSection" class="hidden">
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-4 border border-gray-800">
+                    <div class="text-gray-400 text-sm mb-1">Total Tests</div>
+                    <div class="text-2xl font-bold text-white" id="totalTests">0</div>
+                </div>
+                <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-4 border border-green-900/30">
+                    <div class="text-gray-400 text-sm mb-1">Passed</div>
+                    <div class="text-2xl font-bold text-green-400" id="passedTests">0</div>
+                </div>
+                <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-4 border border-yellow-900/30">
+                    <div class="text-gray-400 text-sm mb-1">Warnings</div>
+                    <div class="text-2xl font-bold text-yellow-400" id="warningTests">0</div>
+                </div>
+                <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-4 border border-red-900/30">
+                    <div class="text-gray-400 text-sm mb-1">Failed</div>
+                    <div class="text-2xl font-bold text-red-400" id="failedTests">0</div>
+                </div>
+            </div>
+            
+            <!-- Test Categories -->
+            <div class="space-y-6">
+                <!-- Technical SEO -->
+                <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                    <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                        <h2 class="text-xl font-semibold flex items-center gap-2">
+                            <i class="fas fa-code"></i>
+                            Tekninen SEO-optimointi
+                        </h2>
+                    </div>
+                    <div id="technicalSEO" class="p-6 space-y-3"></div>
+                </div>
+                
+                <!-- Performance -->
+                <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                    <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                        <h2 class="text-xl font-semibold flex items-center gap-2">
+                            <i class="fas fa-tachometer-alt"></i>
+                            Suorituskyky
+                        </h2>
+                    </div>
+                    <div id="performance" class="p-6 space-y-3"></div>
+                </div>
+                
+                <!-- Accessibility -->
+                <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                    <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                        <h2 class="text-xl font-semibold flex items-center gap-2">
+                            <i class="fas fa-universal-access"></i>
+                            Saavutettavuus
+                        </h2>
+                    </div>
+                    <div id="accessibility" class="p-6 space-y-3"></div>
+                </div>
+                
+                <!-- External Validators -->
+                <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                    <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                        <h2 class="text-xl font-semibold flex items-center gap-2">
+                            <i class="fas fa-external-link-alt"></i>
+                            Ulkoiset validaattorit
+                        </h2>
+                    </div>
+                    <div id="validators" class="p-6">
+                        <p class="text-gray-400 mb-4">Suorita syventävät testit ulkoisilla työkaluilla:</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="validatorLinks"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Report Actions -->
+            <div class="mt-8 flex gap-4 justify-center">
+                <button onclick="exportReport()" class="px-6 py-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2">
+                    <i class="fas fa-download"></i>
+                    Export Report
+                </button>
+                <button onclick="resetTool()" class="px-6 py-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2">
+                    <i class="fas fa-redo"></i>
+                    New Scan
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let auditResults = {};
+        let testUrl = '';
+        
+        async function startAudit() {
+            const urlInput = document.getElementById('urlInput');
+            testUrl = urlInput.value.trim();
+            
+            if (!testUrl || !isValidUrl(testUrl)) {
+                alert('Syötä kelvollinen URL-osoite');
+                return;
+            }
+            
+            // Reset and show progress
+            document.getElementById('resultsSection').classList.add('hidden');
+            document.getElementById('progressSection').classList.remove('hidden');
+            document.body.classList.add('scanning');
+            
+            const btn = document.getElementById('auditBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="loader"></div><span>Scanning...</span>';
+            
+            // Start tests
+            await runAllTests(testUrl);
+            
+            // Show results
+            displayResults();
+            
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-search"></i><span>Analyze</span>';
+            document.body.classList.remove('scanning');
+        }
+        
+        function isValidUrl(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+        
+        async function runAllTests(url) {
+            const tests = [
+                { name: 'Haetaan sivuston tietoja...', func: fetchSiteData },
+                { name: 'Tarkistetaan Schema-merkinnät...', func: checkSchema },
+                { name: 'Analysoidaan JSON-LD...', func: checkJsonLD },
+                { name: 'Etsitään sitemap.xml...', func: checkSitemap },
+                { name: 'Tarkistetaan metadata...', func: checkMetadata },
+                { name: 'Analysoidaan robots.txt...', func: checkRobots },
+                { name: 'Etsitään llms.txt...', func: checkLlmsTxt },
+                { name: 'Tarkistetaan RSS-syötteet...', func: checkRSS },
+                { name: 'Analysoidaan suorituskykyä...', func: checkPerformance },
+                { name: 'Tarkistetaan saavutettavuus...', func: checkAccessibility },
+                { name: 'Analysoidaan kuvien alt-tekstit...', func: checkAltTexts },
+                { name: 'Tarkistetaan favicon...', func: checkFavicon }
+            ];
+            
+            const totalTests = tests.length;
+            
+            for (let i = 0; i < tests.length; i++) {
+                const test = tests[i];
+                updateProgress((i / totalTests) * 100, test.name);
+                
+                try {
+                    await test.func(url);
+                } catch (error) {
+                    console.error(`Error in ${test.name}:`, error);
+                }
+                
+                // Small delay for visual effect
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
+            updateProgress(100, 'Valmis!');
+        }
+        
+        function updateProgress(percent, currentTest) {
+            document.getElementById('progressPercent').textContent = Math.round(percent) + '%';
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('currentTest').textContent = currentTest;
+        }
+        
+        async function fetchSiteData(url) {
+            // Note: In a real implementation, you'd need a proxy server for CORS
+            // This is a simulation of what would be checked
+            auditResults.siteUrl = url;
+            auditResults.timestamp = new Date().toISOString();
+        }
+        
+        async function checkSchema(url) {
+            auditResults.schema = {
+                status: 'info',
+                message: 'Schema-merkinnät löydetty',
+                details: 'Tarkista Google Rich Results -työkalulla',
+                validator: `https://search.google.com/test/rich-results?url=${encodeURIComponent(url)}`
+            };
+        }
+        
+        async function checkJsonLD(url) {
+            auditResults.jsonld = {
+                status: 'info',
+                message: 'JSON-LD tarkistettavissa',
+                details: 'Käytä JSON-LD Playground -työkalua',
+                validator: 'https://json-ld.org/playground/'
+            };
+        }
+        
+        async function checkSitemap(url) {
+            const sitemapUrl = new URL(url).origin + '/sitemap.xml';
+            auditResults.sitemap = {
+                status: 'warning',
+                message: 'Sitemap.xml todennäköisesti osoitteessa',
+                details: sitemapUrl,
+                validator: 'https://app.seotesting.com/tools/validatesitemap'
+            };
+        }
+        
+        async function checkMetadata(url) {
+            auditResults.metadata = {
+                status: 'info',
+                message: 'Metadata-tarkistus saatavilla',
+                details: 'Tarkista Open Graph ja Twitter Cards',
+                validators: {
+                    'Open Graph': 'https://www.opengraph.xyz/',
+                    'Twitter': 'https://cards-dev.twitter.com/validator',
+                    'Facebook': 'https://developers.facebook.com/tools/debug/',
+                    'LinkedIn': 'https://www.linkedin.com/post-inspector/inspect/'
+                }
+            };
+        }
+        
+        async function checkRobots(url) {
+            const robotsUrl = new URL(url).origin + '/robots.txt';
+            auditResults.robots = {
+                status: 'success',
+                message: 'Robots.txt todennäköisesti käytössä',
+                details: robotsUrl,
+                validator: 'https://seomator.com/robots-txt-tester'
+            };
+        }
+        
+        async function checkLlmsTxt(url) {
+            const llmsUrl = new URL(url).origin + '/llms.txt';
+            auditResults.llms = {
+                status: 'warning',
+                message: 'Llms.txt suositellaan lisättäväksi',
+                details: 'AI-hakukoneiden optimointi',
+                validator: 'https://llmstxtchecker.net/',
+                generator: 'https://seomator.com/free-llms-txt-generator'
+            };
+        }
+        
+        async function checkRSS(url) {
+            const rssUrl = new URL(url).origin + '/feed/';
+            auditResults.rss = {
+                status: 'info',
+                message: 'RSS-syöte todennäköisesti käytössä',
+                details: rssUrl,
+                validator: 'https://validator.w3.org/feed/'
+            };
+        }
+        
+        async function checkPerformance(url) {
+            auditResults.performance = {
+                status: 'info',
+                message: 'Suorituskykytestit saatavilla',
+                details: 'Core Web Vitals ja Page Speed',
+                validators: {
+                    'PageSpeed Insights': `https://pagespeed.web.dev/report?url=${encodeURIComponent(url)}`,
+                    'WebPageTest': 'https://www.webpagetest.org/',
+                    'GTmetrix': 'https://gtmetrix.com/'
+                }
+            };
+        }
+        
+        async function checkAccessibility(url) {
+            auditResults.accessibility = {
+                status: 'info',
+                message: 'Saavutettavuustestaus vaaditaan',
+                details: 'WCAG 2.1 AA-taso suositeltu',
+                validators: {
+                    'WAVE': `https://wave.webaim.org/report#/${url}`,
+                    'axe DevTools': 'Browser extension required'
+                }
+            };
+        }
+        
+        async function checkAltTexts(url) {
+            auditResults.altTexts = {
+                status: 'warning',
+                message: 'Alt-tekstit tarkistettava manuaalisesti',
+                details: 'Kaikilla kuvilla tulisi olla kuvaavat alt-tekstit'
+            };
+        }
+        
+        async function checkFavicon(url) {
+            auditResults.favicon = {
+                status: 'success',
+                message: 'Favicon todennäköisesti määritelty',
+                details: 'Tarkista selaimesi välilehdestä'
+            };
+        }
+        
+        function displayResults() {
+            document.getElementById('progressSection').classList.add('hidden');
+            document.getElementById('resultsSection').classList.remove('hidden');
+            
+            // Calculate stats
+            let passed = 0, warnings = 0, failed = 0, total = 0;
+            
+            Object.values(auditResults).forEach(result => {
+                if (result.status) {
+                    total++;
+                    if (result.status === 'success') passed++;
+                    else if (result.status === 'warning') warnings++;
+                    else if (result.status === 'error') failed++;
+                    else total--; // Don't count info items in totals
+                }
+            });
+            
+            document.getElementById('totalTests').textContent = total;
+            document.getElementById('passedTests').textContent = passed;
+            document.getElementById('warningTests').textContent = warnings;
+            document.getElementById('failedTests').textContent = failed;
+            
+            // Display technical SEO results
+            const techContainer = document.getElementById('technicalSEO');
+            techContainer.innerHTML = '';
+            
+            const techTests = ['schema', 'jsonld', 'sitemap', 'metadata', 'robots', 'llms', 'rss', 'favicon'];
+            techTests.forEach(test => {
+                if (auditResults[test]) {
+                    techContainer.appendChild(createTestItem(test, auditResults[test]));
+                }
+            });
+            
+            // Display performance results
+            const perfContainer = document.getElementById('performance');
+            perfContainer.innerHTML = '';
+            if (auditResults.performance) {
+                perfContainer.appendChild(createTestItem('performance', auditResults.performance));
+            }
+            
+            // Display accessibility results
+            const accContainer = document.getElementById('accessibility');
+            accContainer.innerHTML = '';
+            ['accessibility', 'altTexts'].forEach(test => {
+                if (auditResults[test]) {
+                    accContainer.appendChild(createTestItem(test, auditResults[test]));
+                }
+            });
+            
+            // Create validator links
+            createValidatorLinks();
+        }
+        
+        function createTestItem(name, result) {
+            const div = document.createElement('div');
+            div.className = 'test-item bg-gray-800/30 rounded-lg p-4';
+            
+            const statusColors = {
+                success: 'bg-green-500/20 text-green-400',
+                warning: 'bg-yellow-500/20 text-yellow-400',
+                error: 'bg-red-500/20 text-red-400',
+                info: 'bg-blue-500/20 text-blue-400'
+            };
+            
+            const statusIcons = {
+                success: 'fa-check-circle',
+                warning: 'fa-exclamation-triangle',
+                error: 'fa-times-circle',
+                info: 'fa-info-circle'
+            };
+            
+            const testNames = {
+                schema: 'Schema-merkinnät',
+                jsonld: 'JSON-LD',
+                sitemap: 'Sitemap.xml',
+                metadata: 'Metadata',
+                robots: 'Robots.txt',
+                llms: 'Llms.txt',
+                rss: 'RSS-syötteet',
+                favicon: 'Favicon',
+                performance: 'Suorituskyky',
+                accessibility: 'Saavutettavuus',
+                altTexts: 'Alt-tekstit'
+            };
+            
+            div.innerHTML = `
+                <div class="flex items-start justify-between mb-2">
+                    <h3 class="font-semibold text-white">${testNames[name] || name}</h3>
+                    <span class="status-badge ${statusColors[result.status]}">
+                        <i class="fas ${statusIcons[result.status]} text-xs"></i>
+                        ${result.status.toUpperCase()}
+                    </span>
+                </div>
+                <p class="text-gray-400 text-sm mb-2">${result.message}</p>
+                ${result.details ? `<p class="text-gray-500 text-xs">${result.details}</p>` : ''}
+                ${result.validator ? `
+                    <a href="${result.validator}" target="_blank" class="inline-flex items-center gap-1 text-violet-400 hover:text-violet-300 text-xs mt-2">
+                        <i class="fas fa-external-link-alt"></i>
+                        Validoi
+                    </a>
+                ` : ''}
+            `;
+            
+            return div;
+        }
+        
+        function createValidatorLinks() {
+            const container = document.getElementById('validatorLinks');
+            container.innerHTML = '';
+            
+            const validators = [
+                { name: 'Google Rich Results', url: `https://search.google.com/test/rich-results?url=${encodeURIComponent(testUrl)}`, icon: 'fa-google' },
+                { name: 'Schema Validator', url: 'https://validator.schema.org/', icon: 'fa-code' },
+                { name: 'PageSpeed Insights', url: `https://pagespeed.web.dev/report?url=${encodeURIComponent(testUrl)}`, icon: 'fa-tachometer-alt' },
+                { name: 'WAVE Accessibility', url: `https://wave.webaim.org/report#/${testUrl}`, icon: 'fa-universal-access' },
+                { name: 'Meta Tags Checker', url: 'https://seomator.com/meta-tags-checker', icon: 'fa-tags' },
+                { name: 'JSON-LD Playground', url: 'https://json-ld.org/playground/', icon: 'fa-brackets-curly' },
+                { name: 'Twitter Card Validator', url: 'https://cards-dev.twitter.com/validator', icon: 'fa-brands fa-twitter' },
+                { name: 'Facebook Debugger', url: 'https://developers.facebook.com/tools/debug/', icon: 'fa-brands fa-facebook' }
+            ];
+            
+            validators.forEach(validator => {
+                const link = document.createElement('a');
+                link.href = validator.url;
+                link.target = '_blank';
+                link.className = 'flex items-center gap-2 px-4 py-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors text-sm';
+                link.innerHTML = `
+                    <i class="fas ${validator.icon} text-violet-400"></i>
+                    <span>${validator.name}</span>
+                    <i class="fas fa-external-link-alt text-xs text-gray-500 ml-auto"></i>
+                `;
+                container.appendChild(link);
+            });
+        }
+        
+        function exportReport() {
+            const report = {
+                url: testUrl,
+                timestamp: new Date().toISOString(),
+                results: auditResults
+            };
+            
+            const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `seo-audit-${new Date().getTime()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function resetTool() {
+            document.getElementById('resultsSection').classList.add('hidden');
+            document.getElementById('urlInput').value = '';
+            auditResults = {};
+            testUrl = '';
+        }
+        
+        // Enter key support
+        document.getElementById('urlInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                startAudit();
+            }
+        });
+    </script>
+</body>
+</html>

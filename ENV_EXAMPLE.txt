@@ -1,0 +1,9 @@
+Server
+PORT=3001
+
+Google PageSpeed Insights (optional)
+PSI_API_KEY=
+
+WebPageTest (optional)
+WPT_API_KEY=
+WPT_LOCATION=eu-west-1

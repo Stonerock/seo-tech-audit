@@ -1,0 +1,1879 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEO & Tekninen Auditointi - Full Stack</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
+        
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%);
+            min-height: 100vh;
+        }
+        
+        .glow {
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+        }
+        
+        .terminal-cursor::after {
+            content: '_';
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        .matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.02;
+            pointer-events: none;
+            background-image: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(139, 92, 246, 0.1) 2px,
+                rgba(139, 92, 246, 0.1) 4px
+            );
+        }
+        
+        .loader {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(139, 92, 246, 0.3);
+            border-top-color: #8b5cf6;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .test-result {
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+        
+        .test-result:hover {
+            border-left-color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.05);
+        }
+        
+        .status-good { color: #10b981; }
+        .status-warning { color: #f59e0b; }
+        .status-error { color: #ef4444; }
+        .status-info { color: #3b82f6; }
+        
+        .metric-card {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.05));
+            border: 1px solid rgba(139, 92, 246, 0.2);
+        }
+        
+        pre {
+            background: #1a1a2e;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            overflow-x: auto;
+        }
+        
+        .scan-animation {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="text-gray-100">
+    <div class="matrix-bg"></div>
+    
+    <div class="container mx-auto px-4 py-8 max-w-7xl relative z-10">
+        <!-- Header -->
+        <div class="text-center mb-12">
+            <h1 class="text-5xl font-bold mb-4 bg-gradient-to-r from-violet-400 to-purple-600 bg-clip-text text-transparent">
+                <i class="fas fa-terminal mr-3"></i>SEO & Tech Audit Pro
+            </h1>
+            <p class="text-gray-400 text-lg">Full Stack Analysis Tool v2.0</p>
+            
+            <!-- Server Status -->
+            <div id="serverStatus" class="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-gray-800 rounded-full">
+                <div id="statusDot" class="w-2 h-2 rounded-full bg-gray-500"></div>
+                <span id="statusText" class="text-sm text-gray-400">Checking server...</span>
+            </div>
+        </div>
+        
+        <!-- Input Section -->
+        <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-8 mb-8 glow">
+            <div class="flex flex-col md:flex-row gap-4">
+                <div class="flex-1">
+                    <label class="block text-sm text-gray-400 mb-2">
+                        <i class="fas fa-globe mr-2"></i>Target URL
+                    </label>
+                    <input 
+                        type="url" 
+                        id="urlInput"
+                        placeholder="https://example.com"
+                        class="w-full px-4 py-3 bg-gray-800 rounded-lg text-white border border-gray-700 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                    >
+                </div>
+                <div class="flex items-end gap-2">
+                    <label class="flex items-center gap-2 text-sm text-gray-400 mb-1">
+                        <input type="checkbox" id="lhCheckbox" class="accent-violet-500">
+                        Run Lighthouse (slower)
+                    </label>
+                    <button 
+                        onclick="startFullAudit()"
+                        id="auditBtn"
+                        class="px-8 py-3 bg-gradient-to-r from-violet-600 to-purple-600 rounded-lg font-semibold hover:from-violet-700 hover:to-purple-700 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <i class="fas fa-search"></i>
+                        <span>Full Analysis</span>
+                    </button>
+                    <button 
+                        onclick="startBatchAudit()"
+                        id="batchBtn"
+                        class="px-6 py-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Analyze multiple URLs (separate by newline or comma)"
+                    >
+                        <i class="fas fa-layer-group"></i>
+                        <span>Batch</span>
+                    </button>
+                    <div class="flex items-center gap-2">
+                        <button 
+                            onclick="startSitemapAudit()"
+                            id="sitemapBtn"
+                            class="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Skannaa koko sivusto sitemapin perusteella"
+                        >
+                            <i class="fas fa-sitemap"></i>
+                            <span>Sitemap Scan</span>
+                        </button>
+                        <input 
+                            type="number" 
+                            id="maxUrlsInput"
+                            placeholder="50"
+                            min="1"
+                            max="200"
+                            class="w-16 px-2 py-3 bg-gray-800 rounded text-white text-sm border border-gray-700 focus:border-green-500 focus:outline-none"
+                            title="Max URLs to analyze (1-200)"
+                        >
+                        <span class="text-xs text-gray-400">pages</span>
+                    </div>
+                    <button 
+                        onclick="clearCache()"
+                        class="px-4 py-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-all duration-200"
+                        title="Clear cache"
+                    >
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Progress Section -->
+        <div id="progressSection" class="hidden mb-8">
+            <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-gray-400">Analysis in progress</span>
+                    <span id="progressText" class="text-violet-400 font-bold scan-animation">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Analyzing...
+                    </span>
+                </div>
+                <div id="currentTest" class="mt-4 text-sm text-gray-500"></div>
+            </div>
+        </div>
+        
+        <!-- Results Section -->
+        <div id="resultsSection" class="hidden space-y-6">
+            <!-- Overview Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="metric-card rounded-lg p-4">
+                    <div class="text-gray-400 text-xs uppercase mb-1">Performance</div>
+                    <div class="text-2xl font-bold" id="perfScore">-</div>
+                </div>
+                <div class="metric-card rounded-lg p-4">
+                    <div class="text-gray-400 text-xs uppercase mb-1">Accessibility</div>
+                    <div class="text-2xl font-bold" id="a11yScore">-</div>
+                </div>
+                <div class="metric-card rounded-lg p-4">
+                    <div class="text-gray-400 text-xs uppercase mb-1">SEO Score</div>
+                    <div class="text-2xl font-bold" id="seoScore">-</div>
+                </div>
+                <div class="metric-card rounded-lg p-4">
+                    <div class="text-gray-400 text-xs uppercase mb-1">Issues Found</div>
+                    <div class="text-2xl font-bold" id="issueCount">-</div>
+                </div>
+            </div>
+            
+            <!-- Schema & Structured Data -->
+            <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-code"></i>
+                        Schema & Structured Data
+                    </h2>
+                </div>
+                <div id="schemaResults" class="p-6"></div>
+            </div>
+            
+            <!-- Metadata -->
+            <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-tags"></i>
+                        Metadata Analysis
+                    </h2>
+                </div>
+                <div id="metadataResults" class="p-6"></div>
+            </div>
+            
+            <!-- Performance Metrics -->
+            <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-tachometer-alt"></i>
+                        Performance Metrics
+                    </h2>
+                </div>
+                <div id="performanceResults" class="p-6"></div>
+            </div>
+            
+            <!-- Accessibility -->
+            <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-universal-access"></i>
+                        Accessibility Analysis
+                    </h2>
+                </div>
+                <div id="accessibilityResults" class="p-6"></div>
+            </div>
+            
+            <!-- External Files -->
+            <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-file-alt"></i>
+                        External Files & Resources
+                    </h2>
+                </div>
+                <div id="filesResults" class="p-6"></div>
+            </div>
+
+            <!-- Headers / CDN -->
+            <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-network-wired"></i>
+                        Headers / CDN
+                    </h2>
+                </div>
+                <div id="headersResults" class="p-6"></div>
+            </div>
+
+            <!-- External Audits -->
+            <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-external-link-alt"></i>
+                        External Audits
+                    </h2>
+                </div>
+                <div id="externalResults" class="p-6"></div>
+            </div>
+            
+            <!-- AI Readiness -->
+            <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-robot"></i>
+                        AI / Generative Optimisation
+                    </h2>
+                </div>
+                <div id="aiResults" class="p-6"></div>
+            </div>
+
+            <!-- SEO Basics -->
+            <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-search"></i>
+                        SEO Basics
+                    </h2>
+                </div>
+                <div id="seoResults" class="p-6"></div>
+            </div>
+            
+            <!-- Raw Data (Debug) -->
+            <details class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <summary class="px-6 py-4 cursor-pointer hover:bg-gray-800/50">
+                    <i class="fas fa-bug mr-2"></i>Raw Data (Debug)
+                </summary>
+                <div class="p-6">
+                    <pre id="rawData" class="text-xs text-gray-400"></pre>
+                </div>
+            </details>
+
+            <!-- Sitemap Results -->
+            <div id="sitemapResultsSection" class="hidden bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-green-600/20 to-emerald-600/20 px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-sitemap"></i>
+                        Sitemap Analysis Results
+                    </h2>
+                    <div class="flex gap-2">
+                        <button onclick="exportSitemapCsv()" class="px-4 py-2 bg-gray-800 rounded hover:bg-gray-700 text-sm">
+                            <i class="fas fa-file-csv mr-1"></i>Export CSV
+                        </button>
+                        <button onclick="showSchemaRecommendations()" class="px-4 py-2 bg-gray-800 rounded hover:bg-gray-700 text-sm">
+                            <i class="fas fa-lightbulb mr-1"></i>Schema Fixes
+                        </button>
+                    </div>
+                </div>
+                <div class="p-6" id="sitemapResults"></div>
+                <div class="p-6 hidden" id="schemaRecommendations"></div>
+            </div>
+
+            <!-- Batch Results -->
+            <div id="batchResultsSection" class="hidden bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-layer-group"></i>
+                        Batch Results
+                    </h2>
+                    <div class="flex gap-2">
+                        <button onclick="exportBatchCsv()" class="px-4 py-2 bg-gray-800 rounded hover:bg-gray-700 text-sm">
+                            <i class="fas fa-file-csv mr-1"></i>Export CSV
+                        </button>
+                        <button onclick="showBatchChecklist()" class="px-4 py-2 bg-gray-800 rounded hover:bg-gray-700 text-sm">
+                            <i class="fas fa-list-check mr-1"></i>Fix next
+                        </button>
+                    </div>
+                </div>
+                <div class="p-6" id="batchResults"></div>
+                <div class="p-6 hidden" id="batchChecklist"></div>
+            </div>
+            
+            <!-- Fix Priorities -->
+            <div id="fixPrioritiesSection" class="hidden bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
+                <div class="bg-gradient-to-r from-red-600/20 to-orange-600/20 px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Fix Priorities (Agency View)
+                    </h2>
+                    <div class="flex gap-2">
+                        <button onclick="exportPrioritiesCsv()" class="px-4 py-2 bg-gray-800 rounded hover:bg-gray-700 text-sm">
+                            <i class="fas fa-file-csv mr-1"></i>Client Report
+                        </button>
+                        <button onclick="generateActionPlan()" class="px-4 py-2 bg-red-600 rounded hover:bg-red-700 text-sm">
+                            <i class="fas fa-tasks mr-1"></i>Action Plan
+                        </button>
+                    </div>
+                </div>
+                <div class="p-6" id="fixPriorities"></div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex gap-4 justify-center">
+                <button onclick="showFixPriorities()" class="px-6 py-3 bg-gradient-to-r from-red-600 to-orange-600 rounded-lg hover:from-red-700 hover:to-orange-700 transition-colors flex items-center gap-2">
+                    <i class="fas fa-list-ol"></i>
+                    Fix Priorities
+                </button>
+                <button onclick="exportCsvReport()" class="px-6 py-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2">
+                    <i class="fas fa-file-csv"></i>
+                    Export CSV
+                </button>
+                <button onclick="exportFullReport()" class="px-6 py-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2">
+                    <i class="fas fa-download"></i>
+                    Export Full Report
+                </button>
+                <button onclick="resetTool()" class="px-6 py-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2">
+                    <i class="fas fa-redo"></i>
+                    New Analysis
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const BACKEND_URL = 'http://localhost:3001';
+        let currentResults = null;
+        
+        // Check server status on load
+        async function checkServerStatus() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/health`);
+                if (response.ok) {
+                    const data = await response.json();
+                    updateServerStatus('online', `Server online (cache: ${data.cache})`);
+                    document.getElementById('auditBtn').disabled = false;
+                } else {
+                    updateServerStatus('offline', 'Server offline - Start backend first');
+                    document.getElementById('auditBtn').disabled = true;
+                }
+            } catch (error) {
+                updateServerStatus('offline', 'Backend not running - Run: npm start');
+                document.getElementById('auditBtn').disabled = true;
+            }
+        }
+        
+        function updateServerStatus(status, text) {
+            const dot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            
+            if (status === 'online') {
+                dot.classList.remove('bg-gray-500', 'bg-red-500');
+                dot.classList.add('bg-green-500');
+            } else {
+                dot.classList.remove('bg-gray-500', 'bg-green-500');
+                dot.classList.add('bg-red-500');
+            }
+            
+            statusText.textContent = text;
+        }
+        
+        async function startFullAudit() {
+            const urlInput = document.getElementById('urlInput');
+            const url = urlInput.value.trim();
+            
+            if (!url || !isValidUrl(url)) {
+                alert('Please enter a valid URL');
+                return;
+            }
+            
+            const lhFlag = document.getElementById('lhCheckbox')?.checked;
+            await runBackendAudit(url, lhFlag);
+        }
+        
+        async function runBackendAudit(url, lhFlag) {
+            const btn = document.getElementById('auditBtn');
+            const progressSection = document.getElementById('progressSection');
+            const resultsSection = document.getElementById('resultsSection');
+            
+            // UI State
+            btn.disabled = true;
+            btn.innerHTML = '<div class="loader"></div><span>Analyzing...</span>';
+            progressSection.classList.remove('hidden');
+            resultsSection.classList.add('hidden');
+            
+            document.getElementById('currentTest').innerHTML = 'Connecting to backend server...';
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/audit`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url, lighthouse: lhFlag })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                currentResults = data;
+                
+                displayBackendResults(data);
+                
+            } catch (error) {
+                console.error('Audit error:', error);
+                alert(`Error: ${error.message}\n\nMake sure the backend server is running:\nnpm install && npm start`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-search"></i><span>Full Analysis</span>';
+                progressSection.classList.add('hidden');
+            }
+        }
+
+        // Batch audit (URLs separated by comma/newline)
+        let batchResults = [];
+        async function startBatchAudit() {
+            const input = prompt('Enter URLs separated by comma or newline:');
+            if (!input) return;
+            const urls = input.split(/\s|,/) .map(u => u.trim()).filter(Boolean);
+            if (!urls.length) return;
+            batchResults = [];
+            document.getElementById('batchResultsSection').classList.remove('hidden');
+            const container = document.getElementById('batchResults');
+            container.innerHTML = '';
+            for (const url of urls) {
+                const row = document.createElement('div');
+                row.className = 'test-result bg-gray-800/30 rounded-lg p-4 mb-2';
+                row.innerHTML = `<div class="font-semibold mb-1">${url}</div><div class="text-sm text-gray-400">Running...</div>`;
+                container.appendChild(row);
+                try {
+                    const r = await fetch(`${BACKEND_URL}/api/audit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url })});
+                    const data = await r.json();
+                    batchResults.push(data);
+                    row.innerHTML = `<div class="font-semibold mb-1">${url}</div>` +
+                        `<div class="text-sm text-gray-300">SEO: ${Math.max(0, (100 - (data.tests.metadata?.issues?.length || 0)*5 - (data.tests.files?.robots?.exists?0:10) - (data.tests.files?.sitemap?.exists?0:10)))}%, `+
+                        `A11y: ${(data.tests.accessibility?.issues?.length||0)===0?'A':(data.tests.accessibility?.issues?.length||0)<=2?'B':'C'}, `+
+                        `Perf: ${data.tests.performance?.score?.loadTime==='good' && data.tests.performance?.score?.fcp==='good' ? 'A' : 'B/C'}</div>`;
+                } catch (e) {
+                    row.innerHTML = `<div class="font-semibold mb-1">${url}</div><div class="text-sm text-red-400">Failed</div>`;
+                }
+            }
+        }
+
+        function exportBatchCsv() {
+            if (!batchResults.length) return alert('No batch results');
+            const headers = ['url','seoScore','a11yIssues','perfFCP','perfLoad','robots','sitemap'];
+            const rows = [headers.join(',')];
+            for (const r of batchResults) {
+                const seo = Math.max(0, (100 - (r.tests.metadata?.issues?.length || 0)*5 - (r.tests.files?.robots?.exists?0:10) - (r.tests.files?.sitemap?.exists?0:10)));
+                const a11y = (r.tests.accessibility?.issues?.length || 0);
+                const fcp = r.tests.performance?.metrics?.firstContentfulPaint || '';
+                const load = r.tests.performance?.metrics?.loadComplete || '';
+                const robots = r.tests.files?.robots?.exists ? 'yes' : 'no';
+                const sitemap = r.tests.files?.sitemap?.exists ? 'yes' : 'no';
+                rows.push([r.url, seo, a11y, fcp, load, robots, sitemap].join(','));
+            }
+            const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `batch-audit-${Date.now()}.csv`;
+            a.click();
+        }
+
+        function showBatchChecklist() {
+            if (!batchResults.length) return alert('No batch results');
+            const el = document.getElementById('batchChecklist');
+            el.classList.remove('hidden');
+            const items = batchResults.map(r => {
+                const todo = [];
+                if ((r.tests.metadata?.issues?.length || 0) > 0) todo.push('Fix meta title/description/canonical');
+                if (!r.tests.files?.sitemap?.exists) todo.push('Add sitemap.xml and submit to GSC');
+                if (!r.tests.files?.robots?.exists) todo.push('Add robots.txt with sitemap reference');
+                if ((r.tests.accessibility?.images?.withoutAlt || 0) > 0) todo.push('Add alt texts to images');
+                if (r.tests.accessibility && r.tests.accessibility.headings?.h1Count !== 1) todo.push('Ensure single H1 per page');
+                return { url: r.url, todo };
+            });
+            el.innerHTML = items.map(i => `
+                <div class="test-result bg-gray-800/30 rounded p-3 mb-2">
+                    <div class="font-semibold">${i.url}</div>
+                    <ul class="text-sm text-gray-300 list-disc ml-5">${i.todo.map(t => `<li>${t}</li>`).join('')}</ul>
+                </div>
+            `).join('');
+        }
+        
+        function displayBackendResults(data) {
+            const resultsSection = document.getElementById('resultsSection');
+            resultsSection.classList.remove('hidden');
+            
+            // Calculate scores
+            let totalIssues = 0;
+            let seoScore = 100;
+            let perfScore = '-';
+            let a11yScore = '-';
+            
+            // Performance score
+            if (data.tests.performance?.score) {
+                const score = data.tests.performance.score;
+                if (score.loadTime === 'good' && score.fcp === 'good') perfScore = 'A';
+                else if (score.loadTime !== 'poor' && score.fcp !== 'poor') perfScore = 'B';
+                else perfScore = 'C';
+            }
+            
+            // Accessibility score
+            if (data.tests.accessibility?.issues) {
+                const issues = data.tests.accessibility.issues.length;
+                totalIssues += issues;
+                if (issues === 0) a11yScore = 'A';
+                else if (issues <= 2) a11yScore = 'B';
+                else a11yScore = 'C';
+            }
+            
+            // SEO Score calculation
+            if (data.tests.metadata?.issues) {
+                seoScore -= data.tests.metadata.issues.length * 5;
+                totalIssues += data.tests.metadata.issues.length;
+            }
+            if (!data.tests.files?.robots?.exists) seoScore -= 10;
+            if (!data.tests.files?.sitemap?.exists) seoScore -= 10;
+            
+            // Update overview cards
+            document.getElementById('perfScore').textContent = perfScore;
+            document.getElementById('perfScore').className = `text-2xl font-bold ${perfScore === 'A' ? 'status-good' : perfScore === 'B' ? 'status-warning' : 'status-error'}`;
+            
+            document.getElementById('a11yScore').textContent = a11yScore;
+            document.getElementById('a11yScore').className = `text-2xl font-bold ${a11yScore === 'A' ? 'status-good' : a11yScore === 'B' ? 'status-warning' : 'status-error'}`;
+            
+            document.getElementById('seoScore').textContent = Math.max(0, seoScore) + '%';
+            document.getElementById('seoScore').className = `text-2xl font-bold ${seoScore >= 80 ? 'status-good' : seoScore >= 60 ? 'status-warning' : 'status-error'}`;
+            
+            document.getElementById('issueCount').textContent = totalIssues;
+            document.getElementById('issueCount').className = `text-2xl font-bold ${totalIssues === 0 ? 'status-good' : totalIssues <= 5 ? 'status-warning' : 'status-error'}`;
+            
+            // Display Schema results
+            if (data.tests.schema) {
+                const schemaHtml = renderSchemaResults(data.tests.schema);
+                document.getElementById('schemaResults').innerHTML = schemaHtml;
+            }
+            
+            // Display Metadata results
+            if (data.tests.metadata) {
+                const metaHtml = renderMetadataResults(data.tests.metadata);
+                document.getElementById('metadataResults').innerHTML = metaHtml;
+            }
+            
+            // Display Performance results
+            if (data.tests.performance) {
+                const perfHtml = renderPerformanceResults(data.tests.performance);
+                document.getElementById('performanceResults').innerHTML = perfHtml;
+            }
+            
+            // Display Accessibility results
+            if (data.tests.accessibility) {
+                const a11yHtml = renderAccessibilityResults(data.tests.accessibility);
+                document.getElementById('accessibilityResults').innerHTML = a11yHtml;
+            }
+            
+            // Display Files results
+            if (data.tests.files) {
+                const filesHtml = renderFilesResults(data.tests.files);
+                document.getElementById('filesResults').innerHTML = filesHtml;
+            }
+
+            // Headers/CDN
+            if (data.tests.headers) {
+                const headersHtml = renderHeadersResults(data.tests.headers);
+                document.getElementById('headersResults').innerHTML = headersHtml;
+            }
+
+            // External Audits
+            if (data.tests.external) {
+                const externalHtml = renderExternalResults(data.tests.external, data.tests.lighthouse);
+                document.getElementById('externalResults').innerHTML = externalHtml;
+            }
+            
+            // Display AI Readiness
+            if (data.tests.ai) {
+                const aiHtml = renderAIResults(data.tests.ai);
+                document.getElementById('aiResults').innerHTML = aiHtml;
+            }
+
+            // Display SEO results
+            if (data.tests.seo) {
+                const seoHtml = renderSEOResults(data.tests.seo);
+                document.getElementById('seoResults').innerHTML = seoHtml;
+            }
+            
+            // Raw data
+            document.getElementById('rawData').textContent = JSON.stringify(data, null, 2);
+        }
+        
+        function renderSchemaResults(schema) {
+            let html = '<div class="space-y-4">';
+            
+            if (schema.found) {
+                html += `
+                    <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <i class="fas fa-check-circle status-good"></i>
+                            <span class="font-semibold">Structured Data Found</span>
+                        </div>
+                        <div class="text-sm text-gray-400 space-y-1">
+                            <p>• JSON-LD Scripts: ${schema.jsonLdCount}</p>
+                            <p>• Has Microdata: ${schema.hasMicrodata ? 'Yes' : 'No'}</p>
+                            <p>• Has RDFa: ${schema.hasRDFa ? 'Yes' : 'No'}</p>
+                            ${schema.types.length > 0 ? `<p>• Types: ${schema.types.join(', ')}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                // Show validator links
+                html += `
+                    <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                        <div class="font-semibold mb-2">Validate with:</div>
+                        <div class="flex gap-2">
+                            <a href="https://search.google.com/test/rich-results" target="_blank" class="text-violet-400 hover:text-violet-300 text-sm">
+                                <i class="fas fa-external-link-alt mr-1"></i>Google Rich Results
+                            </a>
+                            <a href="https://validator.schema.org/" target="_blank" class="text-violet-400 hover:text-violet-300 text-sm">
+                                <i class="fas fa-external-link-alt mr-1"></i>Schema Validator
+                            </a>
+                        </div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <i class="fas fa-exclamation-triangle status-warning"></i>
+                            <span class="font-semibold">No Structured Data Found</span>
+                        </div>
+                        <p class="text-sm text-gray-400">Consider adding Schema.org markup for better SEO</p>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function renderMetadataResults(metadata) {
+            let html = '<div class="space-y-4">';
+            
+            // Basic meta
+            html += `
+                <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                    <h3 class="font-semibold mb-3">Basic Metadata</h3>
+                    <div class="space-y-2 text-sm">
+                        ${metadata.title ? `
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Title:</span>
+                                <span class="text-white">${metadata.title.substring(0, 60)}${metadata.title.length > 60 ? '...' : ''}</span>
+                            </div>
+                        ` : '<div class="text-red-400">⚠ Title missing</div>'}
+                        
+                        ${metadata.description ? `
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Description:</span>
+                                <span class="text-white">${metadata.description.substring(0, 50)}...</span>
+                            </div>
+                        ` : '<div class="text-red-400">⚠ Description missing</div>'}
+                        
+                        ${metadata.canonical ? `
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Canonical:</span>
+                                <span class="text-green-400">✓ Set</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            
+            // Open Graph
+            if (metadata.og && Object.values(metadata.og).some(v => v)) {
+                html += `
+                    <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                        <h3 class="font-semibold mb-3">Open Graph</h3>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            ${metadata.og.title ? '<div class="text-green-400">✓ Title</div>' : '<div class="text-gray-600">✗ Title</div>'}
+                            ${metadata.og.description ? '<div class="text-green-400">✓ Description</div>' : '<div class="text-gray-600">✗ Description</div>'}
+                            ${metadata.og.image ? '<div class="text-green-400">✓ Image</div>' : '<div class="text-gray-600">✗ Image</div>'}
+                            ${metadata.og.url ? '<div class="text-green-400">✓ URL</div>' : '<div class="text-gray-600">✗ URL</div>'}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Issues
+            if (metadata.issues && metadata.issues.length > 0) {
+                html += `
+                    <div class="test-result bg-red-900/20 rounded-lg p-4">
+                        <h3 class="font-semibold mb-3 text-red-400">Issues Found</h3>
+                        <ul class="space-y-1 text-sm text-gray-400">
+                            ${metadata.issues.map(issue => `<li>• ${issue}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function renderPerformanceResults(performance) {
+            const metrics = performance.metrics;
+            let html = '<div class="grid grid-cols-2 md:grid-cols-4 gap-4">';
+            
+            html += `
+                <div class="test-result bg-gray-800/30 rounded-lg p-3 text-center">
+                    <div class="text-2xl font-bold ${metrics.firstContentfulPaint < 1800 ? 'status-good' : metrics.firstContentfulPaint < 3000 ? 'status-warning' : 'status-error'}">
+                        ${Math.round(metrics.firstContentfulPaint || 0)}ms
+                    </div>
+                    <div class="text-xs text-gray-400 mt-1">First Contentful Paint</div>
+                </div>
+                
+                <div class="test-result bg-gray-800/30 rounded-lg p-3 text-center">
+                    <div class="text-2xl font-bold ${metrics.loadComplete < 3000 ? 'status-good' : metrics.loadComplete < 5000 ? 'status-warning' : 'status-error'}">
+                        ${(metrics.loadComplete / 1000).toFixed(1)}s
+                    </div>
+                    <div class="text-xs text-gray-400 mt-1">Load Time</div>
+                </div>
+                
+                <div class="test-result bg-gray-800/30 rounded-lg p-3 text-center">
+                    <div class="text-2xl font-bold text-white">
+                        ${metrics.resources}
+                    </div>
+                    <div class="text-xs text-gray-400 mt-1">Resources</div>
+                </div>
+                
+                ${metrics.memory ? `
+                    <div class="test-result bg-gray-800/30 rounded-lg p-3 text-center">
+                        <div class="text-2xl font-bold text-white">
+                            ${metrics.memory.usedJSHeapSize}MB
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">Memory Used</div>
+                    </div>
+                ` : ''}
+            `;
+            
+            html += '</div>';
+            
+            // Add performance tips
+            html += `
+                <div class="mt-4 text-sm text-gray-400">
+                    <p class="mb-2">Performance Tips:</p>
+                    <ul class="space-y-1">
+                        ${metrics.firstContentfulPaint > 1800 ? '<li>• Optimize First Contentful Paint (target: < 1.8s)</li>' : ''}
+                        ${metrics.loadComplete > 3000 ? '<li>• Reduce total load time (target: < 3s)</li>' : ''}
+                        ${metrics.resources > 50 ? '<li>• Consider reducing number of resources</li>' : ''}
+                    </ul>
+                </div>
+            `;
+            
+            return html;
+        }
+        
+        function renderAccessibilityResults(accessibility) {
+            let html = '<div class="space-y-4">';
+            
+            // Stats grid
+            html += `
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="test-result bg-gray-800/30 rounded-lg p-3">
+                        <div class="text-xl font-bold ${accessibility.images.percentage === 0 ? 'status-good' : accessibility.images.percentage < 20 ? 'status-warning' : 'status-error'}">
+                            ${accessibility.images.percentage}%
+                        </div>
+                        <div class="text-xs text-gray-400">Images without alt</div>
+                    </div>
+                    
+                    <div class="test-result bg-gray-800/30 rounded-lg p-3">
+                        <div class="text-xl font-bold ${accessibility.headings.h1Count === 1 ? 'status-good' : 'status-warning'}">
+                            ${accessibility.headings.h1Count}
+                        </div>
+                        <div class="text-xs text-gray-400">H1 Tags</div>
+                    </div>
+                    
+                    <div class="test-result bg-gray-800/30 rounded-lg p-3">
+                        <div class="text-xl font-bold ${accessibility.links.empty === 0 ? 'status-good' : 'status-error'}">
+                            ${accessibility.links.empty}
+                        </div>
+                        <div class="text-xs text-gray-400">Empty Links</div>
+                    </div>
+                    
+                    <div class="test-result bg-gray-800/30 rounded-lg p-3">
+                        <div class="text-xl font-bold ${accessibility.lang ? 'status-good' : 'status-error'}">
+                            ${accessibility.lang || 'Missing'}
+                        </div>
+                        <div class="text-xs text-gray-400">Language</div>
+                    </div>
+                </div>
+            `;
+            
+            // Issues
+            if (accessibility.issues && accessibility.issues.length > 0) {
+                html += `
+                    <div class="test-result bg-yellow-900/20 rounded-lg p-4">
+                        <h3 class="font-semibold mb-3 text-yellow-400">Accessibility Issues</h3>
+                        <ul class="space-y-1 text-sm text-gray-400">
+                            ${accessibility.issues.map(issue => `<li>• ${issue}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="test-result bg-green-900/20 rounded-lg p-4">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-check-circle status-good"></i>
+                            <span class="font-semibold text-green-400">No major accessibility issues found!</span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function renderFilesResults(files) {
+            let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+            
+            // Robots.txt
+            html += `
+                <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-semibold">robots.txt</span>
+                        <span class="${files.robots?.exists ? 'status-good' : 'status-warning'}">
+                            ${files.robots?.exists ? '✓ Found' : '✗ Not Found'}
+                        </span>
+                    </div>
+                    ${files.robots?.exists ? `
+                        <div class="text-xs text-gray-400">
+                            <p>• Has Sitemap ref: ${files.robots.hasSitemap ? 'Yes' : 'No'}</p>
+                            <p>• Has User-agent: ${files.robots.hasUserAgent ? 'Yes' : 'No'}</p>
+                        </div>
+                    ` : '<p class="text-xs text-gray-400">Consider adding robots.txt for crawler control</p>'}
+                </div>
+            `;
+            
+            // Sitemap
+            html += `
+                <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-semibold">sitemap.xml</span>
+                        <span class="${files.sitemap?.exists ? 'status-good' : 'status-warning'}">
+                            ${files.sitemap?.exists ? '✓ Found' : '✗ Not Found'}
+                        </span>
+                    </div>
+                    ${files.sitemap?.exists && files.sitemap.urlCount ? `
+                        <div class="text-xs text-gray-400">
+                            <p>• URLs indexed: ${files.sitemap.urlCount}</p>
+                        </div>
+                    ` : '<p class="text-xs text-gray-400">Sitemap helps search engines find all pages</p>'}
+                </div>
+            `;
+            
+            // RSS
+            html += `
+                <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-semibold">RSS Feed</span>
+                        <span class="${files.rss?.exists ? 'status-good' : 'status-info'}">
+                            ${files.rss?.exists ? '✓ Found' : '✗ Not Found'}
+                        </span>
+                    </div>
+                    ${!files.rss?.exists ? '<p class="text-xs text-gray-400">Optional for most sites</p>' : ''}
+                </div>
+            `;
+            
+            // LLMS.txt
+            html += `
+                <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-semibold">llms.txt</span>
+                        <span class="${files.llms?.exists ? 'status-good' : 'status-info'}">
+                            ${files.llms?.exists ? '✓ Found' : '✗ Not Found'}
+                        </span>
+                    </div>
+                    ${!files.llms?.exists ? `
+                        <div class="text-xs text-gray-400">
+                            <p>New standard for AI crawlers</p>
+                            <a href="https://llmstxt.org/" target="_blank" class="text-violet-400 hover:text-violet-300">
+                                <i class="fas fa-external-link-alt mr-1"></i>Learn more
+                            </a>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function renderSEOResults(seo) {
+            let html = '<div class="grid grid-cols-2 md:grid-cols-4 gap-4">';
+            
+            html += `
+                <div class="test-result bg-gray-800/30 rounded-lg p-3">
+                    <div class="text-xl font-bold ${seo.https ? 'status-good' : 'status-error'}">
+                        ${seo.https ? 'HTTPS' : 'HTTP'}
+                    </div>
+                    <div class="text-xs text-gray-400">Protocol</div>
+                </div>
+                
+                <div class="test-result bg-gray-800/30 rounded-lg p-3">
+                    <div class="text-xl font-bold ${seo.h1 === 1 ? 'status-good' : seo.h1 === 0 ? 'status-error' : 'status-warning'}">
+                        ${seo.h1}
+                    </div>
+                    <div class="text-xs text-gray-400">H1 Tags</div>
+                </div>
+                
+                <div class="test-result bg-gray-800/30 rounded-lg p-3">
+                    <div class="text-xl font-bold text-white">
+                        ${seo.internalLinks}
+                    </div>
+                    <div class="text-xs text-gray-400">Internal Links</div>
+                </div>
+                
+                <div class="test-result bg-gray-800/30 rounded-lg p-3">
+                    <div class="text-xl font-bold text-white">
+                        ${seo.wordCount}
+                    </div>
+                    <div class="text-xs text-gray-400">Word Count</div>
+                </div>
+            `;
+            
+            html += '</div>';
+            
+            // Social links
+            if (seo.socialLinks) {
+                html += `
+                    <div class="mt-4 test-result bg-gray-800/30 rounded-lg p-4">
+                        <h3 class="font-semibold mb-2">Social Media Presence</h3>
+                        <div class="grid grid-cols-4 gap-2 text-sm">
+                            <div class="${seo.socialLinks.facebook ? 'text-green-400' : 'text-gray-600'}">
+                                <i class="fab fa-facebook mr-1"></i>
+                                ${seo.socialLinks.facebook ? 'Found' : 'Not found'}
+                            </div>
+                            <div class="${seo.socialLinks.twitter ? 'text-green-400' : 'text-gray-600'}">
+                                <i class="fab fa-twitter mr-1"></i>
+                                ${seo.socialLinks.twitter ? 'Found' : 'Not found'}
+                            </div>
+                            <div class="${seo.socialLinks.linkedin ? 'text-green-400' : 'text-gray-600'}">
+                                <i class="fab fa-linkedin mr-1"></i>
+                                ${seo.socialLinks.linkedin ? 'Found' : 'Not found'}
+                            </div>
+                            <div class="${seo.socialLinks.instagram ? 'text-green-400' : 'text-gray-600'}">
+                                <i class="fab fa-instagram mr-1"></i>
+                                ${seo.socialLinks.instagram ? 'Found' : 'Not found'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            return html;
+        }
+
+        function renderHeadersResults(h) {
+            return `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="test-result bg-gray-800/30 rounded-lg p-3">
+                        <div class="text-sm text-gray-400">CDN</div>
+                        <div class="text-lg font-semibold">${h.cdn || 'Unknown'}</div>
+                    </div>
+                    <div class="test-result bg-gray-800/30 rounded-lg p-3">
+                        <div class="text-sm text-gray-400">Cache</div>
+                        <div class="text-lg font-semibold">${h.cacheStatus || '-'}</div>
+                    </div>
+                    <div class="test-result bg-gray-800/30 rounded-lg p-3">
+                        <div class="text-sm text-gray-400">Server</div>
+                        <div class="text-lg font-semibold">${h.server || '-'}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderExternalResults(ext, lighthouseData) {
+            let html = '<div class="space-y-4">';
+            if (ext.psi) {
+                html += `
+                    <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                        <div class="font-semibold mb-1">PageSpeed Insights</div>
+                        <div class="text-sm text-gray-300">Perf score: ${ext.psi.score ?? '-'}</div>
+                        <a class="text-violet-300 text-xs" target="_blank" href="${ext.psi.link}">Open PSI</a>
+                    </div>`;
+            }
+            if (ext.wpt) {
+                html += `
+                    <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                        <div class="font-semibold mb-1">WebPageTest</div>
+                        ${ext.wpt.userUrl ? `<a class=\"text-violet-300 text-xs\" target=\"_blank\" href=\"${ext.wpt.userUrl}\">View WPT</a>` : ''}
+                        ${ext.wptMetrics ? `<div class=\"text-sm text-gray-300 mt-1\">TTFB: ${ext.wptMetrics.ttfb || '-'} ms · FCP: ${ext.wptMetrics.fcp || '-'} ms · LCP: ${ext.wptMetrics.lcp || '-'} ms</div>` : ''}
+                    </div>`;
+            }
+            if (lighthouseData) {
+                html += `
+                    <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                        <div class="font-semibold mb-1">Lighthouse</div>
+                        <div class="text-sm text-gray-300">Perf: ${lighthouseData.scores?.performance ?? '-'} · A11y: ${lighthouseData.scores?.accessibility ?? '-'} · SEO: ${lighthouseData.scores?.seo ?? '-'}</div>
+                    </div>`;
+            }
+            html += '</div>';
+            return html;
+        }
+
+        function renderAIResults(ai) {
+            let html = '<div class="space-y-4">';
+            html += `
+                <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                    <div class="flex items-center justify-between">
+                        <span class="font-semibold">AI Readiness Score</span>
+                        <span class="${ai.score >= 80 ? 'status-good' : ai.score >= 60 ? 'status-warning' : 'status-error'}">${ai.score}%</span>
+                    </div>
+                </div>
+            `;
+
+            if (ai.robots) {
+                const allows = ai.robots.allows || {};
+                html += `
+                <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-semibold">robots.txt</span>
+                        <a href="${ai.robots.url}" target="_blank" class="text-violet-400 text-xs">Open</a>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                        ${Object.keys(allows).map(bot => `
+                            <div class="${allows[bot] ? 'text-green-400' : 'text-yellow-400'}">${bot}: ${allows[bot] ? 'Allowed' : 'Maybe blocked'}</div>
+                        `).join('')}
+                    </div>
+                </div>`;
+            }
+
+            if (ai.xRobotsTag) {
+                html += `
+                <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                    <div class="font-semibold mb-1">X-Robots-Tag</div>
+                    <div class="text-sm text-gray-400">${ai.xRobotsTag}</div>
+                </div>`;
+            }
+
+            if (ai.recommendations && ai.recommendations.length) {
+                html += `
+                <div class="test-result bg-yellow-900/20 rounded-lg p-4">
+                    <div class="font-semibold text-yellow-400 mb-2">Recommendations</div>
+                    <ul class="text-sm text-gray-300 space-y-1">
+                        ${ai.recommendations.map(r => `<li>• ${r}</li>`).join('')}
+                    </ul>
+                </div>`;
+            }
+
+            // llms.txt generator and inspiration links
+            html += `
+                <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                    <div class="flex items-center gap-2 mb-3 font-semibold">llms.txt</div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="generateLlmsTxt()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded">Generate llms.txt</button>
+                        <a href="https://seomator.com/google-ai-overview-keywords-checker" target="_blank" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-violet-300">Google AI Overview Keywords</a>
+                        <a href="https://seomator.com/google-ai-mode-checker" target="_blank" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-violet-300">Google AI Mode Checker</a>
+                    </div>
+                    <pre id="llmsPreview" class="mt-3 text-xs text-gray-400 hidden"></pre>
+                </div>
+            `;
+
+            html += '</div>';
+            return html;
+        }
+
+        async function generateLlmsTxt() {
+            const urlInput = document.getElementById('urlInput');
+            const url = urlInput.value.trim();
+            if (!url || !isValidUrl(url)) {
+                alert('Please enter a valid URL');
+                return;
+            }
+            try {
+                const r = await fetch(`${BACKEND_URL}/api/llms/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                if (!r.ok) throw new Error('Generation failed');
+                const txt = await r.text();
+                const pre = document.getElementById('llmsPreview');
+                pre.textContent = txt;
+                pre.classList.remove('hidden');
+                // Offer download
+                const blob = new Blob([txt], { type: 'text/plain' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'llms.txt';
+                a.textContent = 'Download llms.txt';
+                a.className = 'inline-block mt-2 text-violet-300 hover:text-violet-200';
+                pre.insertAdjacentElement('afterend', a);
+            } catch (e) {
+                alert('Failed to generate llms.txt');
+            }
+        }
+        
+        function isValidUrl(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+        
+        async function clearCache() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/cache/clear`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    alert('Cache cleared successfully');
+                    checkServerStatus();
+                }
+            } catch (error) {
+                alert('Failed to clear cache. Is the server running?');
+            }
+        }
+
+        // Sitemap audit functionality
+        let sitemapResults = [];
+        async function startSitemapAudit() {
+            const urlInput = document.getElementById('urlInput');
+            const url = urlInput.value.trim();
+            
+            console.log('Starting sitemap audit for:', url);
+            
+            if (!url || !isValidUrl(url)) {
+                alert('Please enter a valid URL');
+                return;
+            }
+
+            // Disable button and show progress
+            const btn = document.getElementById('sitemapBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="loader inline-block mr-2"></div>Scanning...';
+            
+            const progressSection = document.getElementById('progressSection');
+            progressSection.classList.remove('hidden');
+            document.getElementById('progressText').innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Starting sitemap analysis...';
+            
+            try {
+                // Get max URLs from input, default to 50
+                const maxUrlsInput = document.getElementById('maxUrlsInput');
+                const maxUrls = maxUrlsInput.value ? parseInt(maxUrlsInput.value) : 50;
+                
+                console.log('Fetching from:', `${BACKEND_URL}/api/sitemap-audit`);
+                const response = await fetch(`${BACKEND_URL}/api/sitemap-audit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, maxUrls })
+                });
+                
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Error response:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Received data:', data);
+                sitemapResults = data;
+                displaySitemapResults(data);
+                
+            } catch (error) {
+                console.error('Sitemap audit error:', error);
+                alert(`Sitemap audit failed: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-sitemap"></i><span>Sitemap Scan</span>';
+                progressSection.classList.add('hidden');
+            }
+        }
+
+        function displaySitemapResults(data) {
+            console.log('displaySitemapResults called with:', data);
+            
+            // Make sure resultsSection is visible first
+            const resultsSection = document.getElementById('resultsSection');
+            if (resultsSection) {
+                resultsSection.classList.remove('hidden');
+            }
+            
+            const sitemapSection = document.getElementById('sitemapResultsSection');
+            if (!sitemapSection) {
+                console.error('sitemapResultsSection element not found!');
+                return;
+            }
+            sitemapSection.classList.remove('hidden');
+            
+            const container = document.getElementById('sitemapResults');
+            if (!container) {
+                console.error('sitemapResults element not found!');
+                return;
+            }
+            
+            console.log('Displaying results...');
+            let html = '';
+            
+            // Summary stats
+            html += `
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="metric-card rounded-lg p-4">
+                        <div class="text-gray-400 text-xs uppercase mb-1">URLs Analyzed</div>
+                        <div class="text-2xl font-bold">${data.totalUrls || 0}</div>
+                        ${data.totalUrlsInSitemap && data.totalUrlsInSitemap > data.totalUrls ? 
+                            `<div class="text-xs text-gray-500">of ${data.totalUrlsInSitemap} total</div>` : ''
+                        }
+                    </div>
+                    <div class="metric-card rounded-lg p-4">
+                        <div class="text-gray-400 text-xs uppercase mb-1">Schema Issues</div>
+                        <div class="text-2xl font-bold text-yellow-400">${data.schemaIssues || 0}</div>
+                    </div>
+                    <div class="metric-card rounded-lg p-4">
+                        <div class="text-gray-400 text-xs uppercase mb-1">Missing Schemas</div>
+                        <div class="text-2xl font-bold text-red-400">${data.missingSchemas || 0}</div>
+                    </div>
+                    <div class="metric-card rounded-lg p-4">
+                        <div class="text-gray-400 text-xs uppercase mb-1">Avg Score</div>
+                        <div class="text-2xl font-bold">${data.avgScore || 0}%</div>
+                    </div>
+                </div>
+            `;
+
+            // Results by content type
+            if (data.byContentType) {
+                html += `
+                    <div class="space-y-4">
+                        <h3 class="text-lg font-semibold mb-3">Results by Content Type</h3>
+                `;
+                
+                for (const [type, pages] of Object.entries(data.byContentType)) {
+                    html += `
+                        <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="font-semibold capitalize">${type}</h4>
+                                <span class="text-sm text-gray-400">${pages.length} pages</span>
+                            </div>
+                            <div class="space-y-2">
+                    `;
+                    
+                    pages.slice(0, 5).forEach(page => {
+                        html += `
+                            <div class="flex items-center justify-between text-sm">
+                                <span class="truncate flex-1 mr-4">${page.url}</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs px-2 py-1 rounded ${page.hasRecommendedSchema ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}">
+                                        ${page.hasRecommendedSchema ? 'Schema OK' : 'Schema Missing'}
+                                    </span>
+                                    ${page.recommendedSchema ? `<span class="text-xs text-gray-400">${page.recommendedSchema}</span>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    if (pages.length > 5) {
+                        html += `<div class="text-xs text-gray-400">...and ${pages.length - 5} more</div>`;
+                    }
+                    
+                    html += '</div></div>';
+                }
+                
+                html += '</div>';
+            }
+
+            container.innerHTML = html;
+        }
+
+        function exportSitemapCsv() {
+            if (!sitemapResults || !sitemapResults.pages) {
+                alert('No sitemap results to export');
+                return;
+            }
+            
+            const headers = ['url', 'contentType', 'title', 'hasSchema', 'recommendedSchema', 'currentSchema', 'issues'];
+            const rows = [headers.join(',')];
+            
+            sitemapResults.pages.forEach(page => {
+                const row = [
+                    page.url,
+                    page.contentType || '',
+                    `"${(page.title || '').replace(/"/g, '""')}"`,
+                    page.hasRecommendedSchema ? 'yes' : 'no',
+                    page.recommendedSchema || '',
+                    page.currentSchema || '',
+                    `"${(page.issues || []).join('; ').replace(/"/g, '""')}"`
+                ];
+                rows.push(row.join(','));
+            });
+            
+            const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `sitemap-audit-${Date.now()}.csv`;
+            a.click();
+        }
+
+        function showSchemaRecommendations() {
+            if (!sitemapResults) {
+                alert('No sitemap results available');
+                return;
+            }
+            
+            const el = document.getElementById('schemaRecommendations');
+            el.classList.remove('hidden');
+            
+            let html = '<div class="space-y-4">';
+            html += '<h3 class="text-lg font-semibold mb-4">Schema Recommendations</h3>';
+            
+            // Group by recommended schema
+            const bySchema = {};
+            sitemapResults.pages?.forEach(page => {
+                if (page.recommendedSchema && !page.hasRecommendedSchema) {
+                    if (!bySchema[page.recommendedSchema]) {
+                        bySchema[page.recommendedSchema] = [];
+                    }
+                    bySchema[page.recommendedSchema].push(page);
+                }
+            });
+            
+            for (const [schema, pages] of Object.entries(bySchema)) {
+                html += `
+                    <div class="test-result bg-gray-800/30 rounded-lg p-4">
+                        <h4 class="font-semibold mb-2">${schema} Schema</h4>
+                        <p class="text-sm text-gray-400 mb-3">${pages.length} pages missing this schema</p>
+                        <div class="space-y-1">
+                `;
+                
+                pages.slice(0, 10).forEach(page => {
+                    html += `<div class="text-sm text-gray-300">• ${page.url}</div>`;
+                });
+                
+                if (pages.length > 10) {
+                    html += `<div class="text-xs text-gray-400">...and ${pages.length - 10} more</div>`;
+                }
+                
+                html += '</div></div>';
+            }
+            
+            html += '</div>';
+            el.innerHTML = html;
+        }
+
+        // Fix Priorities System
+        function showFixPriorities() {
+            if (!currentResults && !sitemapResults) {
+                alert('Run an audit first to see fix priorities');
+                return;
+            }
+            
+            const data = currentResults || sitemapResults;
+            const priorities = calculateFixPriorities(data);
+            displayFixPriorities(priorities);
+        }
+
+        function calculateFixPriorities(data) {
+            const priorities = {
+                critical: [],
+                high: [],
+                medium: [],
+                low: []
+            };
+
+            // For single page analysis
+            if (data.tests) {
+                // Critical issues
+                if (!data.tests.metadata?.title) {
+                    priorities.critical.push({
+                        issue: 'Missing page title',
+                        impact: 'Search engines cannot understand page topic',
+                        effort: 'Low',
+                        timeEstimate: '5 min'
+                    });
+                }
+                
+                if (!data.tests.metadata?.description) {
+                    priorities.critical.push({
+                        issue: 'Missing meta description',
+                        impact: 'Poor search result snippets, lower CTR',
+                        effort: 'Low',
+                        timeEstimate: '10 min'
+                    });
+                }
+
+                if (!data.tests.schema?.found) {
+                    priorities.critical.push({
+                        issue: 'No structured data found',
+                        impact: 'Invisible to AI systems and rich snippets',
+                        effort: 'Medium',
+                        timeEstimate: '30 min'
+                    });
+                }
+
+                // High priority issues
+                if (data.tests.accessibility?.issues?.length > 0) {
+                    const a11yData = data.tests.accessibility;
+                    let detailedDescription = `${a11yData.issues.length} accessibility violations:\n`;
+                    
+                    // Add specific details from accessibility data
+                    if (a11yData.images?.withoutAlt > 0) {
+                        detailedDescription += `• ${a11yData.images.withoutAlt} images without alt text\n`;
+                    }
+                    if (a11yData.links?.empty > 0) {
+                        detailedDescription += `• ${a11yData.links.empty} empty links\n`;
+                    }
+                    if (a11yData.forms?.inputsWithoutLabels > 0) {
+                        detailedDescription += `• ${a11yData.forms.inputsWithoutLabels} form fields without labels\n`;
+                    }
+                    if (a11yData.headings?.h1Count === 0) {
+                        detailedDescription += `• Missing H1 heading\n`;
+                    }
+                    if (a11yData.headings?.h1Count > 1) {
+                        detailedDescription += `• Multiple H1 headings (${a11yData.headings.h1Count})\n`;
+                    }
+                    if (a11yData.headings?.structureIssues) {
+                        detailedDescription += `• Heading hierarchy problems\n`;
+                    }
+                    if (!a11yData.lang) {
+                        detailedDescription += `• Missing language attribute\n`;
+                    }
+                    
+                    // Add axe-core violations if available
+                    if (a11yData.axe?.violations?.length > 0) {
+                        detailedDescription += `• ${a11yData.axe.violations.length} automated violations found\n`;
+                    }
+
+                    priorities.high.push({
+                        issue: detailedDescription.trim(),
+                        impact: 'Legal compliance risk, poor user experience, SEO penalties',
+                        effort: 'Medium',
+                        timeEstimate: `${Math.ceil(a11yData.issues.length * 0.5)} hours`
+                    });
+                }
+
+                if (!data.tests.files?.sitemap?.exists) {
+                    priorities.high.push({
+                        issue: 'Missing XML sitemap',
+                        impact: 'Search engines may miss important pages',
+                        effort: 'Medium',
+                        timeEstimate: '20 min'
+                    });
+                }
+
+                if (data.tests.performance?.score?.loadTime === 'poor') {
+                    let perfDetails = 'Slow page loading performance:\n';
+                    const perfMetrics = data.tests.performance.metrics;
+                    
+                    if (perfMetrics?.loadComplete > 5000) {
+                        perfDetails += `• Total load time: ${Math.round(perfMetrics.loadComplete/1000)}s (target: <3s)\n`;
+                    }
+                    if (perfMetrics?.firstContentfulPaint > 2500) {
+                        perfDetails += `• First Contentful Paint: ${Math.round(perfMetrics.firstContentfulPaint)}ms (target: <1.8s)\n`;
+                    }
+                    if (perfMetrics?.domContentLoaded > 3000) {
+                        perfDetails += `• DOM Content Loaded: ${Math.round(perfMetrics.domContentLoaded/1000)}s\n`;
+                    }
+                    if (perfMetrics?.resources > 100) {
+                        perfDetails += `• Too many resources: ${perfMetrics.resources} (optimize: images, CSS, JS)\n`;
+                    }
+                    
+                    priorities.high.push({
+                        issue: perfDetails.trim(),
+                        impact: 'High bounce rate, poor Core Web Vitals, reduced search rankings',
+                        effort: 'High',
+                        timeEstimate: '4-8 hours'
+                    });
+                }
+
+                // Medium priority issues
+                if (data.tests.metadata?.issues?.length > 0) {
+                    let metaDetails = `Meta tag optimization needed:\n`;
+                    data.tests.metadata.issues.forEach(issue => {
+                        metaDetails += `• ${issue}\n`;
+                    });
+                    
+                    priorities.medium.push({
+                        issue: metaDetails.trim(),
+                        impact: 'Suboptimal search appearance, reduced click-through rates',
+                        effort: 'Low',
+                        timeEstimate: '15 min'
+                    });
+                }
+
+                if (!data.tests.files?.llms?.exists) {
+                    priorities.medium.push({
+                        issue: 'Missing llms.txt for AI crawlers',
+                        impact: 'Reduced AI system visibility',
+                        effort: 'Low',
+                        timeEstimate: '10 min'
+                    });
+                }
+
+                // Low priority issues
+                if (!data.tests.metadata?.og?.image) {
+                    priorities.low.push({
+                        issue: 'Missing Open Graph image',
+                        impact: 'Poor social media sharing appearance',
+                        effort: 'Low',
+                        timeEstimate: '5 min'
+                    });
+                }
+            }
+
+            // For sitemap analysis
+            if (data.pages) {
+                const totalPages = data.pages.length;
+                const pagesWithIssues = data.pages.filter(p => p.issues.length > 0).length;
+                const missingSchemas = data.missingSchemas || 0;
+
+                if (missingSchemas > totalPages * 0.5) {
+                    let schemaDetails = `${missingSchemas} pages missing proper schema markup:\n`;
+                    
+                    // Group by content type for better understanding
+                    const schemaByType = {};
+                    data.pages.filter(p => !p.hasRecommendedSchema).forEach(page => {
+                        const type = page.recommendedSchema || 'Unknown';
+                        if (!schemaByType[type]) schemaByType[type] = 0;
+                        schemaByType[type]++;
+                    });
+                    
+                    Object.entries(schemaByType).forEach(([type, count]) => {
+                        schemaDetails += `• ${count} ${type.toLowerCase()} pages need ${type} schema\n`;
+                    });
+
+                    priorities.critical.push({
+                        issue: schemaDetails.trim(),
+                        impact: 'Poor AI system understanding, limited rich snippets, reduced Google AI Overview visibility',
+                        effort: 'High',
+                        timeEstimate: `${Math.ceil(missingSchemas * 0.5)} hours`
+                    });
+                }
+
+                if (pagesWithIssues > totalPages * 0.3) {
+                    let issueDetails = `${pagesWithIssues} pages have technical issues:\n`;
+                    
+                    // Count common issues across pages
+                    const issueCount = {};
+                    data.pages.forEach(page => {
+                        page.issues.forEach(issue => {
+                            if (!issueCount[issue]) issueCount[issue] = 0;
+                            issueCount[issue]++;
+                        });
+                    });
+                    
+                    // Show top 5 most common issues
+                    Object.entries(issueCount)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 5)
+                        .forEach(([issue, count]) => {
+                            issueDetails += `• ${count} pages: ${issue}\n`;
+                        });
+
+                    priorities.high.push({
+                        issue: issueDetails.trim(),
+                        impact: 'Inconsistent search performance, poor user experience across site',
+                        effort: 'High',
+                        timeEstimate: `${Math.ceil(pagesWithIssues * 0.25)} hours`
+                    });
+                }
+            }
+
+            return priorities;
+        }
+
+        function displayFixPriorities(priorities) {
+            const section = document.getElementById('fixPrioritiesSection');
+            const container = document.getElementById('fixPriorities');
+            
+            section.classList.remove('hidden');
+            
+            let html = '';
+            
+            const priorityLevels = [
+                { level: 'critical', title: 'Critical (Fix Immediately)', color: 'red', icon: 'fas fa-fire' },
+                { level: 'high', title: 'High Priority (This Week)', color: 'orange', icon: 'fas fa-exclamation-circle' },
+                { level: 'medium', title: 'Medium Priority (This Month)', color: 'yellow', icon: 'fas fa-clock' },
+                { level: 'low', title: 'Low Priority (Nice to Have)', color: 'blue', icon: 'fas fa-info-circle' }
+            ];
+
+            priorityLevels.forEach(({ level, title, color, icon }) => {
+                const items = priorities[level];
+                if (items.length === 0) return;
+
+                html += `
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold mb-4 flex items-center gap-2 text-${color}-400">
+                            <i class="${icon}"></i>
+                            ${title} (${items.length})
+                        </h3>
+                        <div class="space-y-3">
+                `;
+
+                items.forEach((item, index) => {
+                    // Format multiline descriptions properly
+                    const formattedIssue = item.issue.replace(/\n/g, '<br>');
+                    
+                    html += `
+                        <div class="bg-gray-800/30 rounded-lg p-4 border-l-4 border-${color}-500">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <h4 class="font-semibold text-white mb-2 leading-relaxed">${formattedIssue}</h4>
+                                    <p class="text-gray-400 text-sm mb-3 leading-relaxed">${item.impact}</p>
+                                    <div class="flex items-center gap-4 text-xs">
+                                        <span class="bg-gray-700 px-2 py-1 rounded">
+                                            Effort: ${item.effort}
+                                        </span>
+                                        <span class="bg-gray-700 px-2 py-1 rounded">
+                                            Time: ${item.timeEstimate}
+                                        </span>
+                                    </div>
+                                </div>
+                                <input type="checkbox" class="mt-1 accent-${color}-500" title="Mark as completed">
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div></div>';
+            });
+
+            if (Object.values(priorities).every(arr => arr.length === 0)) {
+                html = `
+                    <div class="text-center py-8">
+                        <i class="fas fa-check-circle text-green-400 text-4xl mb-4"></i>
+                        <h3 class="text-xl font-semibold text-green-400 mb-2">Excellent Work!</h3>
+                        <p class="text-gray-400">No critical issues found. Your site is in great shape!</p>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function exportPrioritiesCsv() {
+            if (!currentResults && !sitemapResults) {
+                alert('No audit data available');
+                return;
+            }
+
+            const data = currentResults || sitemapResults;
+            const priorities = calculateFixPriorities(data);
+            
+            const headers = ['Priority', 'Issue', 'Impact', 'Effort', 'Time Estimate', 'Status'];
+            const rows = [headers.join(',')];
+
+            ['critical', 'high', 'medium', 'low'].forEach(level => {
+                priorities[level].forEach(item => {
+                    const row = [
+                        level.toUpperCase(),
+                        `"${item.issue.replace(/"/g, '""')}"`,
+                        `"${item.impact.replace(/"/g, '""')}"`,
+                        item.effort,
+                        item.timeEstimate,
+                        'Pending'
+                    ];
+                    rows.push(row.join(','));
+                });
+            });
+
+            const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `fix-priorities-${Date.now()}.csv`;
+            a.click();
+        }
+
+        function generateActionPlan() {
+            if (!currentResults && !sitemapResults) {
+                alert('No audit data available');
+                return;
+            }
+
+            const data = currentResults || sitemapResults;
+            const priorities = calculateFixPriorities(data);
+            
+            let plan = '# SEO Fix Action Plan\n\n';
+            plan += `Generated: ${new Date().toLocaleDateString()}\n`;
+            plan += `Site: ${data.url || 'Multiple pages'}\n\n`;
+
+            ['critical', 'high', 'medium', 'low'].forEach(level => {
+                const items = priorities[level];
+                if (items.length === 0) return;
+
+                plan += `## ${level.toUpperCase()} PRIORITY (${items.length} items)\n\n`;
+                
+                items.forEach((item, index) => {
+                    plan += `### ${index + 1}. ${item.issue}\n`;
+                    plan += `**Impact:** ${item.impact}\n`;
+                    plan += `**Effort:** ${item.effort} | **Time:** ${item.timeEstimate}\n`;
+                    plan += `**Status:** [ ] Pending\n\n`;
+                });
+            });
+
+            const blob = new Blob([plan], { type: 'text/markdown' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `action-plan-${Date.now()}.md`;
+            a.click();
+        }
+        
+        function exportFullReport() {
+            if (!currentResults) {
+                alert('No results to export');
+                return;
+            }
+            
+            const blob = new Blob([JSON.stringify(currentResults, null, 2)], { 
+                type: 'application/json' 
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `seo-audit-${currentResults.url.replace(/[^a-z0-9]/gi, '_')}-${new Date().getTime()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function exportCsvReport() {
+            if (!currentResults) {
+                alert('No results to export');
+                return;
+            }
+            const r = currentResults;
+            const headers = [
+                'url','perfGrade','a11yIssues','seoScore','fcp_ms','load_ms','resources','cdn','cache','server',
+                'psi_score','wpt_ttfb_ms','wpt_fcp_ms','wpt_lcp_ms','lh_perf','lh_a11y','lh_seo','ai_score',
+                'robots','sitemap','rss','llms','schema_types','schema_required_issues'
+            ];
+            const perfGrade = (r.tests.performance?.score?.loadTime === 'good' && r.tests.performance?.score?.fcp === 'good') ? 'A' : ((r.tests.performance?.score?.loadTime !== 'poor' && r.tests.performance?.score?.fcp !== 'poor') ? 'B' : 'C');
+            let seoScore = 100;
+            if (r.tests.metadata?.issues) seoScore -= r.tests.metadata.issues.length * 5;
+            if (!r.tests.files?.robots?.exists) seoScore -= 10;
+            if (!r.tests.files?.sitemap?.exists) seoScore -= 10;
+            const a11yIssues = (r.tests.accessibility?.issues?.length || 0);
+            const row = [
+                r.url,
+                perfGrade,
+                a11yIssues,
+                Math.max(0, seoScore),
+                r.tests.performance?.metrics?.firstContentfulPaint || '',
+                r.tests.performance?.metrics?.loadComplete || '',
+                r.tests.performance?.metrics?.resources || '',
+                r.tests.headers?.cdn || '',
+                r.tests.headers?.cacheStatus || '',
+                r.tests.headers?.server || '',
+                r.tests.external?.psi?.score ?? '',
+                r.tests.external?.wptMetrics?.ttfb ?? '',
+                r.tests.external?.wptMetrics?.fcp ?? '',
+                r.tests.external?.wptMetrics?.lcp ?? '',
+                r.tests.lighthouse?.scores?.performance ?? '',
+                r.tests.lighthouse?.scores?.accessibility ?? '',
+                r.tests.lighthouse?.scores?.seo ?? '',
+                r.tests.ai?.score ?? '',
+                r.tests.files?.robots?.exists ? 'yes' : 'no',
+                r.tests.files?.sitemap?.exists ? 'yes' : 'no',
+                r.tests.files?.rss?.exists ? 'yes' : 'no',
+                r.tests.files?.llms?.exists ? 'yes' : 'no',
+                (r.tests.schema?.types || []).join('|'),
+                (r.tests.schema?.requiredIssues || []).length || 0
+            ];
+            const csv = [headers.join(','), row.map(v => (typeof v === 'string' && /[",\n]/.test(v)) ? '"' + v.replace(/"/g,'""') + '"' : v).join(',')].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `seo-audit-${(r.url || '').replace(/[^a-z0-9]/gi, '_')}-${Date.now()}.csv`;
+            a.click();
+        }
+        
+        function resetTool() {
+            document.getElementById('resultsSection').classList.add('hidden');
+            document.getElementById('urlInput').value = '';
+            currentResults = null;
+        }
+        
+        // Initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            checkServerStatus();
+            setInterval(checkServerStatus, 30000); // Check every 30s
+            
+            document.getElementById('urlInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    startFullAudit();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
