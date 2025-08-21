@@ -1,15 +1,23 @@
 # SEO Audit Tool
 
-A comprehensive SEO and technical audit tool designed for digital agencies and developers. Analyze single pages or entire sites via sitemap with actionable prioritized recommendations.
+A comprehensive SEO and technical audit tool designed for digital agencies and developers. Because "attention is all you need" in AI, but apparently you also need proper schema markup, robots.txt, and the ability to explain to clients why their bounce rate is higher than their conversion rate.
 
 ## Features
 
-- **Single Page Analysis**: Complete SEO, accessibility, and performance audit
-- **Sitemap Crawling**: Analyze entire websites (up to 200 pages)
+- **Single Page Analysis**: Complete SEO, accessibility, and performance audit (the works)
+- **Sitemap Crawling**: Analyze entire websites (up to 200 pages, because who has time for more?)
 - **Schema Validation**: Automatic content type detection and schema recommendations
-- **AI Readiness**: Optimization for Google AI Overviews and LLM crawlers
-- **Fix Priorities**: Actionable task list with effort estimates and impact analysis
+- **AI Readiness**: Optimization for Google AI Overviews and LLM crawlers (future-proofing included)
+- **Fix Priorities**: Actionable task list with effort estimates and impact analysis (no more "fix everything" requests)
 - **Multiple Export Formats**: CSV reports, action plans, and client-ready summaries
+
+### AI Optimization Features ✨
+
+Because the robots are taking over search results, might as well help them understand your content:
+
+- **Google AI Overview Optimization**: Featured snippet potential, entity recognition, Q&A structure analysis
+- **LLM Crawler Optimization**: Citation-friendly content detection, semantic structure validation, factual vs opinion ratios
+- **Content Structure Analysis**: AI-readable hierarchy, optimal paragraph lengths, content completeness scoring
 
 ## Tech Stack
 
@@ -77,24 +85,33 @@ LIGHTHOUSE=1
 ### Single Page Audit
 
 1. Enter a URL in the input field
-2. Optionally enable Lighthouse (slower but more detailed)
+2. Optionally enable Lighthouse (slower but more detailed, like a thorough code review)
 3. Click "Full Analysis"
-4. Review results and export reports
+4. Review results and try not to cry at the accessibility score
+5. Export reports and prepare your client presentation
 
 ### Sitemap Analysis
 
 1. Enter a website URL
-2. Set the number of pages to analyze (1-200)
+2. Set the number of pages to analyze (1-200, default 50 because we're not monsters)
 3. Click "Sitemap Scan"
 4. Get comprehensive site-wide analysis with schema recommendations
+5. Watch as the tool finds schema issues you didn't know existed
 
 ### Fix Priorities
 
-After any audit:
-1. Click "Fix Priorities" to see actionable tasks
-2. Tasks are categorized by urgency (Critical, High, Medium, Low)
-3. Each task includes effort estimate and business impact
-4. Export as CSV for client reports or Markdown for development teams
+After any audit (the moment of truth):
+1. Click "Fix Priorities" to see actionable tasks ranked by urgency
+2. Tasks are categorized by urgency (Critical = fix now, Low = someday maybe)
+3. Each task includes effort estimate and business impact (so you can prioritize properly)
+4. Export as CSV for client reports or Markdown for your development backlog
+
+### AI Readiness Analysis
+
+The tool now analyzes how well your content performs with AI systems:
+- **Google AI Overview scores**: Because being featured in AI summaries is the new featured snippet
+- **LLM optimization metrics**: Making your content citation-worthy for ChatGPT and friends
+- **Content structure analysis**: Helping AI understand your brilliant thoughts
 
 ## API Endpoints
 
@@ -211,5 +228,6 @@ MIT License - see LICENSE file for details
 
 ---
 
-**Built for digital agencies and SEO professionals**  
-Comprehensive auditing with actionable insights for better website optimization.
+**Built for digital agencies and SEO professionals who need more than "you should improve your SEO"**  
+
+Comprehensive auditing with actionable insights, because saying "add more keywords" isn't a strategy anymore. Now with AI optimization features, because apparently humans weren't complicated enough to optimize for.

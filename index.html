@@ -1091,6 +1091,8 @@
 
         function renderAIResults(ai) {
             let html = '<div class="space-y-4">';
+            
+            // Overall AI Readiness Score
             html += `
                 <div class="test-result bg-gray-800/30 rounded-lg p-4">
                     <div class="flex items-center justify-between">
@@ -1100,48 +1102,136 @@
                 </div>
             `;
 
+            // Enhanced AI Overview Optimization
+            if (ai.aiOverviewOptimization) {
+                const aio = ai.aiOverviewOptimization;
+                html += `
+                <div class="test-result bg-blue-900/20 rounded-lg p-4">
+                    <h3 class="font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                        <i class="fas fa-search"></i>
+                        Google AI Overview Optimization
+                        <span class="text-sm font-normal text-blue-300">${aio.score}%</span>
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-blue-400">${aio.featuredSnippetPotential}%</div>
+                            <div class="text-xs text-gray-400">Featured Snippet Potential</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-blue-400">${aio.structureOptimization}%</div>
+                            <div class="text-xs text-gray-400">Structure Optimization</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-blue-400">${aio.entityRecognition}%</div>
+                            <div class="text-xs text-gray-400">Entity Recognition</div>
+                        </div>
+                    </div>
+                    ${aio.recommendations.length > 0 ? `
+                        <div class="text-sm">
+                            <strong class="text-blue-300">Recommendations:</strong>
+                            <ul class="mt-1 space-y-1 text-gray-300">
+                                ${aio.recommendations.slice(0, 3).map(r => `<li>• ${r}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                </div>`;
+            }
+
+            // LLM Optimization
+            if (ai.llmOptimization) {
+                const llm = ai.llmOptimization;
+                html += `
+                <div class="test-result bg-green-900/20 rounded-lg p-4">
+                    <h3 class="font-semibold text-green-400 mb-3 flex items-center gap-2">
+                        <i class="fas fa-robot"></i>
+                        LLM Crawler Optimization
+                        <span class="text-sm font-normal text-green-300">${llm.score}%</span>
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-green-400">${llm.citationFriendly}%</div>
+                            <div class="text-xs text-gray-400">Citation-Friendly</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-green-400">${llm.semanticStructure}%</div>
+                            <div class="text-xs text-gray-400">Semantic Structure</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-green-400">${llm.factualContent}%</div>
+                            <div class="text-xs text-gray-400">Factual Content</div>
+                        </div>
+                    </div>
+                    ${llm.recommendations.length > 0 ? `
+                        <div class="text-sm">
+                            <strong class="text-green-300">Recommendations:</strong>
+                            <ul class="mt-1 space-y-1 text-gray-300">
+                                ${llm.recommendations.slice(0, 3).map(r => `<li>• ${r}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                </div>`;
+            }
+
+            // Content Structure
+            if (ai.contentStructure) {
+                const cs = ai.contentStructure;
+                html += `
+                <div class="test-result bg-purple-900/20 rounded-lg p-4">
+                    <h3 class="font-semibold text-purple-400 mb-3 flex items-center gap-2">
+                        <i class="fas fa-sitemap"></i>
+                        AI Content Structure
+                        <span class="text-sm font-normal text-purple-300">${cs.score}%</span>
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-purple-400">${cs.hierarchyScore}%</div>
+                            <div class="text-xs text-gray-400">Hierarchy</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-purple-400">${cs.readabilityScore}%</div>
+                            <div class="text-xs text-gray-400">AI Readability</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-purple-400">${cs.completenessScore}%</div>
+                            <div class="text-xs text-gray-400">Completeness</div>
+                        </div>
+                    </div>
+                    ${cs.recommendations.length > 0 ? `
+                        <div class="text-sm">
+                            <strong class="text-purple-300">Recommendations:</strong>
+                            <ul class="mt-1 space-y-1 text-gray-300">
+                                ${cs.recommendations.slice(0, 3).map(r => `<li>• ${r}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                </div>`;
+            }
+
+            // Traditional AI Readiness (robots.txt, etc.)
             if (ai.robots) {
                 const allows = ai.robots.allows || {};
                 html += `
                 <div class="test-result bg-gray-800/30 rounded-lg p-4">
                     <div class="flex items-center justify-between mb-2">
-                        <span class="font-semibold">robots.txt</span>
+                        <span class="font-semibold">Crawler Access (robots.txt)</span>
                         <a href="${ai.robots.url}" target="_blank" class="text-violet-400 text-xs">Open</a>
                     </div>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
                         ${Object.keys(allows).map(bot => `
-                            <div class="${allows[bot] ? 'text-green-400' : 'text-yellow-400'}">${bot}: ${allows[bot] ? 'Allowed' : 'Maybe blocked'}</div>
+                            <div class="${allows[bot] ? 'text-green-400' : 'text-yellow-400'}">${bot}: ${allows[bot] ? 'Allowed' : 'Blocked'}</div>
                         `).join('')}
                     </div>
                 </div>`;
             }
 
-            if (ai.xRobotsTag) {
-                html += `
-                <div class="test-result bg-gray-800/30 rounded-lg p-4">
-                    <div class="font-semibold mb-1">X-Robots-Tag</div>
-                    <div class="text-sm text-gray-400">${ai.xRobotsTag}</div>
-                </div>`;
-            }
-
-            if (ai.recommendations && ai.recommendations.length) {
-                html += `
-                <div class="test-result bg-yellow-900/20 rounded-lg p-4">
-                    <div class="font-semibold text-yellow-400 mb-2">Recommendations</div>
-                    <ul class="text-sm text-gray-300 space-y-1">
-                        ${ai.recommendations.map(r => `<li>• ${r}</li>`).join('')}
-                    </ul>
-                </div>`;
-            }
-
-            // llms.txt generator and inspiration links
+            // llms.txt and external tools
             html += `
                 <div class="test-result bg-gray-800/30 rounded-lg p-4">
-                    <div class="flex items-center gap-2 mb-3 font-semibold">llms.txt</div>
+                    <div class="flex items-center gap-2 mb-3 font-semibold">AI Crawler Tools</div>
                     <div class="flex flex-wrap gap-2">
-                        <button onclick="generateLlmsTxt()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded">Generate llms.txt</button>
-                        <a href="https://seomator.com/google-ai-overview-keywords-checker" target="_blank" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-violet-300">Google AI Overview Keywords</a>
-                        <a href="https://seomator.com/google-ai-mode-checker" target="_blank" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-violet-300">Google AI Mode Checker</a>
+                        <button onclick="generateLlmsTxt()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm">Generate llms.txt</button>
+                        <a href="https://seomator.com/google-ai-overview-keywords-checker" target="_blank" class="px-4 py-2 bg-blue-800 hover:bg-blue-700 rounded text-blue-300 text-sm">AI Overview Keywords</a>
+                        <a href="https://seomator.com/google-ai-mode-checker" target="_blank" class="px-4 py-2 bg-green-800 hover:bg-green-700 rounded text-green-300 text-sm">AI Mode Checker</a>
                     </div>
                     <pre id="llmsPreview" class="mt-3 text-xs text-gray-400 hidden"></pre>
                 </div>
@@ -1575,10 +1665,46 @@
                 if (!data.tests.files?.llms?.exists) {
                     priorities.medium.push({
                         issue: 'Missing llms.txt for AI crawlers',
-                        impact: 'Reduced AI system visibility',
+                        impact: 'Reduced AI system visibility and citation potential',
                         effort: 'Low',
                         timeEstimate: '10 min'
                     });
+                }
+
+                // AI Overview optimization issues
+                if (data.tests.ai?.aiOverviewOptimization) {
+                    const aio = data.tests.ai.aiOverviewOptimization;
+                    if (aio.score < 50) {
+                        let aiIssues = 'Poor Google AI Overview optimization:\n';
+                        if (aio.featuredSnippetPotential < 30) aiIssues += '• Low featured snippet potential\n';
+                        if (aio.structureOptimization < 30) aiIssues += '• Poor content structure for AI\n';
+                        if (aio.entityRecognition < 30) aiIssues += '• Insufficient entity recognition\n';
+                        
+                        priorities.high.push({
+                            issue: aiIssues.trim(),
+                            impact: 'Reduced visibility in Google AI Overviews and voice search',
+                            effort: 'Medium',
+                            timeEstimate: '2-3 hours'
+                        });
+                    }
+                }
+
+                // LLM optimization issues
+                if (data.tests.ai?.llmOptimization) {
+                    const llm = data.tests.ai.llmOptimization;
+                    if (llm.score < 50) {
+                        let llmIssues = 'Poor LLM crawler optimization:\n';
+                        if (llm.citationFriendly < 30) llmIssues += '• Content not citation-friendly\n';
+                        if (llm.semanticStructure < 30) llmIssues += '• Poor semantic structure\n';
+                        if (llm.factualContent < 30) llmIssues += '• Insufficient factual content\n';
+                        
+                        priorities.medium.push({
+                            issue: llmIssues.trim(),
+                            impact: 'Reduced AI chatbot citations and knowledge graph inclusion',
+                            effort: 'Medium',
+                            timeEstimate: '3-4 hours'
+                        });
+                    }
                 }
 
                 // Low priority issues

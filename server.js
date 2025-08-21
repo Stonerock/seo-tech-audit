@@ -724,7 +724,10 @@ async function testAIReadiness(url, headersInfo, $) {
     robots: { url: `${urlObj.origin}/robots.txt`, allows: {}, exists: null },
     xRobotsTag: null,
     recommendations: [],
-    score: 100
+    score: 100,
+    aiOverviewOptimization: analyzeAIOverviewReadiness($),
+    llmOptimization: analyzeLLMOptimization($),
+    contentStructure: analyzeContentStructure($)
   };
 
   // robots.txt parse
@@ -776,6 +779,183 @@ async function testAIReadiness(url, headersInfo, $) {
   // Clamp score
   if (out.score < 0) out.score = 0;
   return out;
+}
+
+// Analyze Google AI Overview readiness
+function analyzeAIOverviewReadiness($) {
+  const analysis = {
+    score: 100,
+    featuredSnippetPotential: 0,
+    structureOptimization: 0,
+    entityRecognition: 0,
+    issues: [],
+    recommendations: []
+  };
+
+  // Featured Snippet Potential
+  const lists = $('ol, ul').length;
+  const tables = $('table').length;
+  const definitions = $('p').filter((i, el) => {
+    const text = $(el).text().toLowerCase();
+    return text.includes(' is ') || text.includes(' are ') || text.includes(' means ');
+  }).length;
+
+  if (lists > 0) analysis.featuredSnippetPotential += 20;
+  if (tables > 0) analysis.featuredSnippetPotential += 25;
+  if (definitions > 0) analysis.featuredSnippetPotential += 30;
+
+  // Question-Answer Structure
+  const headings = $('h1, h2, h3, h4, h5, h6');
+  const questionHeadings = headings.filter((i, el) => {
+    const text = $(el).text().toLowerCase();
+    return text.includes('?') || text.includes('what') || text.includes('how') || text.includes('why') || text.includes('when') || text.includes('where');
+  }).length;
+
+  if (questionHeadings > 0) {
+    analysis.featuredSnippetPotential += 15;
+  } else {
+    analysis.recommendations.push('Add question-based headings for AI Overview optimization');
+  }
+
+  // Structure Optimization
+  const properHeadingHierarchy = headings.length > 2;
+  const hasIntroduction = $('p').first().text().length > 100;
+  
+  if (properHeadingHierarchy) analysis.structureOptimization += 30;
+  if (hasIntroduction) analysis.structureOptimization += 20;
+  
+  // Entity Recognition
+  const capitalizedWords = $('body').text().match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) || [];
+  const uniqueEntities = [...new Set(capitalizedWords)].filter(word => word.length > 3).length;
+  
+  if (uniqueEntities > 5) analysis.entityRecognition += 30;
+  else analysis.recommendations.push('Include more proper nouns and named entities');
+
+  // Wikipedia-style first paragraph
+  const firstParagraph = $('p').first().text();
+  const hasWikipediaStyle = firstParagraph.length > 150 && firstParagraph.split(' ').length > 20;
+  if (hasWikipediaStyle) {
+    analysis.entityRecognition += 20;
+  } else {
+    analysis.recommendations.push('Write comprehensive introductory paragraph (Wikipedia-style)');
+  }
+
+  analysis.score = Math.min(100, analysis.featuredSnippetPotential + analysis.structureOptimization + analysis.entityRecognition);
+  
+  return analysis;
+}
+
+// Analyze LLM optimization
+function analyzeLLMOptimization($) {
+  const analysis = {
+    score: 100,
+    citationFriendly: 0,
+    semanticStructure: 0,
+    factualContent: 0,
+    issues: [],
+    recommendations: []
+  };
+
+  // Citation-friendly content
+  const quotableStatements = $('p').filter((i, el) => {
+    const text = $(el).text();
+    return text.length > 50 && text.length < 200 && (
+      text.includes('%') || 
+      text.includes('according to') || 
+      text.includes('research shows') ||
+      text.includes('study found') ||
+      /\b\d{4}\b/.test(text) // Years
+    );
+  }).length;
+
+  if (quotableStatements > 2) analysis.citationFriendly += 40;
+  else analysis.recommendations.push('Add more quotable statistics and research citations');
+
+  // Source attributions
+  const attributions = $('body').text().match(/according to|source:|via |per |citing |research by/gi) || [];
+  if (attributions.length > 0) {
+    analysis.citationFriendly += 30;
+  } else {
+    analysis.recommendations.push('Include source attributions and research citations');
+  }
+
+  // Semantic structure
+  const topicKeywords = $('h1, h2, h3').text().toLowerCase();
+  const bodyText = $('body').text().toLowerCase();
+  const semanticConsistency = topicKeywords.split(' ').filter(word => 
+    word.length > 3 && bodyText.includes(word)
+  ).length;
+
+  if (semanticConsistency > 5) analysis.semanticStructure += 35;
+  else analysis.recommendations.push('Improve semantic consistency between headings and content');
+
+  // Factual vs opinion content
+  const factualIndicators = bodyText.match(/studies? show|research indicates|data reveals|according to|statistics|evidence|findings/g) || [];
+  const opinionIndicators = bodyText.match(/i think|in my opinion|i believe|personally|feel that/g) || [];
+  
+  const factualRatio = factualIndicators.length / (factualIndicators.length + opinionIndicators.length + 1);
+  if (factualRatio > 0.7) {
+    analysis.factualContent += 35;
+  } else {
+    analysis.recommendations.push('Increase factual content with research backing');
+  }
+
+  analysis.score = Math.min(100, analysis.citationFriendly + analysis.semanticStructure + analysis.factualContent);
+  
+  return analysis;
+}
+
+// Analyze content structure for AI
+function analyzeContentStructure($) {
+  const analysis = {
+    score: 100,
+    hierarchyScore: 0,
+    readabilityScore: 0,
+    completenessScore: 0,
+    issues: [],
+    recommendations: []
+  };
+
+  // Heading hierarchy
+  const headings = $('h1, h2, h3, h4, h5, h6');
+  const headingLevels = Array.from(headings).map(h => parseInt(h.tagName[1]));
+  
+  let hierarchyIssues = 0;
+  for (let i = 1; i < headingLevels.length; i++) {
+    if (headingLevels[i] - headingLevels[i-1] > 1) hierarchyIssues++;
+  }
+  
+  if (hierarchyIssues === 0 && headings.length > 2) {
+    analysis.hierarchyScore = 40;
+  } else {
+    analysis.recommendations.push('Fix heading hierarchy for better AI understanding');
+  }
+
+  // Content readability for AI
+  const paragraphs = $('p');
+  const avgParagraphLength = Array.from(paragraphs).reduce((sum, p) => 
+    sum + $(p).text().split(' ').length, 0) / paragraphs.length;
+  
+  if (avgParagraphLength > 15 && avgParagraphLength < 100) {
+    analysis.readabilityScore = 30;
+  } else {
+    analysis.recommendations.push('Optimize paragraph length (15-100 words) for AI processing');
+  }
+
+  // Topic completeness
+  const wordCount = $('body').text().split(' ').length;
+  const headingCount = headings.length;
+  const contentDensity = wordCount / (headingCount || 1);
+  
+  if (contentDensity > 100 && contentDensity < 500) {
+    analysis.completenessScore = 30;
+  } else {
+    analysis.recommendations.push('Balance content depth - aim for 100-500 words per section');
+  }
+
+  analysis.score = analysis.hierarchyScore + analysis.readabilityScore + analysis.completenessScore;
+  
+  return analysis;
 }
 
 // Build llms.txt content using heuristics
