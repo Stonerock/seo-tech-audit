@@ -19,7 +19,7 @@ Because the robots are taking over search results, might as well help them under
 - **Google AI Overview Optimization**: Featured snippet potential, entity recognition, Q&A structure analysis
 - **Content Structure Analysis**: AI-readable hierarchy, optimal paragraph lengths, content completeness scoring
 
-#### AI Surfaces Readiness Score (Flagship Feature)
+#### AI Surfaces Readiness Score
 
 Our proprietary scoring system evaluates content readiness for AI systems across 6 key dimensions:
 
