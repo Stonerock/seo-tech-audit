@@ -303,6 +303,7 @@
                     </h2>
                 </div>
                 <div id="aiResults" class="p-6"></div>
+                <div id="aiSurfacesResults" class="p-6 pt-0"></div>
             </div>
 
             <!-- SEO Basics -->
@@ -664,6 +665,11 @@
                 const aiHtml = renderAIResults(data.tests.ai);
                 document.getElementById('aiResults').innerHTML = aiHtml;
             }
+            // AI Surfaces data now routed to upper panel in renderAIResults()
+            // if (data.tests.aiSurfaces) {
+            //     const sHtml = renderAISurfaces(data.tests.aiSurfaces);
+            //     document.getElementById('aiSurfacesResults').innerHTML = sHtml;
+            // }
 
             // Display SEO results
             if (data.tests.seo) {
@@ -1092,15 +1098,92 @@
         function renderAIResults(ai) {
             let html = '<div class="space-y-4">';
             
-            // Overall AI Readiness Score
-            html += `
-                <div class="test-result bg-gray-800/30 rounded-lg p-4">
-                    <div class="flex items-center justify-between">
-                        <span class="font-semibold">AI Readiness Score</span>
-                        <span class="${ai.score >= 80 ? 'status-good' : ai.score >= 60 ? 'status-warning' : 'status-error'}">${ai.score}%</span>
+            // AI Surfaces Readiness Score (Flagship Feature)
+            // Route the correct data from tests.aiSurfaces to this better layout
+            const surfaces = window.currentResults?.tests?.aiSurfaces || ai.aiSurfacesReadiness;
+            if (surfaces) {
+                html += `
+                <div class="test-result bg-gradient-to-r from-indigo-900/30 to-purple-900/30 rounded-lg p-6 border border-indigo-500/20">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-bold text-indigo-300 flex items-center gap-2">
+                            <i class="fas fa-robot"></i>
+                            AI Surfaces Readiness
+                            <button onclick="showAIScoringInfo()" class="text-indigo-400 hover:text-indigo-300 text-sm ml-1">
+                                <i class="fas fa-info-circle"></i>
+                            </button>
+                        </h3>
+                        <div class="text-right">
+                            <div class="text-3xl font-bold ${surfaces.overallScore >= 80 ? 'text-green-400' : surfaces.overallScore >= 60 ? 'text-yellow-400' : 'text-red-400'}">${surfaces.overallScore}</div>
+                            <div class="text-lg font-semibold ${surfaces.grade === 'A+' || surfaces.grade === 'A' ? 'text-green-400' : surfaces.grade === 'B' || surfaces.grade === 'C' ? 'text-yellow-400' : 'text-red-400'}">${surfaces.grade}</div>
+                        </div>
                     </div>
-                </div>
-            `;
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                        <div class="text-center p-3 bg-gray-800/50 rounded">
+                            <div class="text-xl font-bold text-indigo-400">${surfaces.subMetrics.answerClarity.score}</div>
+                            <div class="text-xs text-gray-400">Answer Clarity</div>
+                            <div class="text-xs text-gray-500">25% weight</div>
+                        </div>
+                        <div class="text-center p-3 bg-gray-800/50 rounded">
+                            <div class="text-xl font-bold text-indigo-400">${surfaces.subMetrics.structuredData.score}</div>
+                            <div class="text-xs text-gray-400">Structured Data</div>
+                            <div class="text-xs text-gray-500">20% weight</div>
+                        </div>
+                        <div class="text-center p-3 bg-gray-800/50 rounded">
+                            <div class="text-xl font-bold text-indigo-400">${surfaces.subMetrics.extractableFacts.score}</div>
+                            <div class="text-xs text-gray-400">Extractable Facts</div>
+                            <div class="text-xs text-gray-500">20% weight</div>
+                        </div>
+                        <div class="text-center p-3 bg-gray-800/50 rounded">
+                            <div class="text-xl font-bold text-indigo-400">${surfaces.subMetrics.citations.score}</div>
+                            <div class="text-xs text-gray-400">Citations</div>
+                            <div class="text-xs text-gray-500">15% weight</div>
+                        </div>
+                        <div class="text-center p-3 bg-gray-800/50 rounded">
+                            <div class="text-xl font-bold text-indigo-400">${surfaces.subMetrics.recency.score}</div>
+                            <div class="text-xs text-gray-400">Content Recency</div>
+                            <div class="text-xs text-gray-500">10% weight</div>
+                        </div>
+                        <div class="text-center p-3 bg-gray-800/50 rounded">
+                            <div class="text-xl font-bold text-indigo-400">${surfaces.subMetrics.technicalOptimization.score}</div>
+                            <div class="text-xs text-gray-400">Technical</div>
+                            <div class="text-xs text-gray-500">10% weight</div>
+                        </div>
+                    </div>
+
+                    ${surfaces.strengths.length > 0 ? `
+                        <div class="mb-4">
+                            <h4 class="font-semibold text-green-400 mb-2 flex items-center gap-1">
+                                <i class="fas fa-check-circle"></i> Strengths
+                            </h4>
+                            <ul class="text-sm text-green-300 space-y-1">
+                                ${surfaces.strengths.map(s => `<li>• ${s}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+
+                    ${surfaces.recommendations.length > 0 ? `
+                        <div class="mb-4">
+                            <h4 class="font-semibold text-yellow-400 mb-2 flex items-center gap-1">
+                                <i class="fas fa-lightbulb"></i> Top Recommendations
+                            </h4>
+                            <ul class="text-sm text-gray-300 space-y-1">
+                                ${surfaces.recommendations.map(r => `<li>• ${r}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+
+                    <div class="flex gap-2 flex-wrap">
+                        <button onclick="showDetailedAIAnalysis()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded text-sm font-medium">
+                            <i class="fas fa-chart-line mr-1"></i>Detailed Analysis
+                        </button>
+                        <button onclick="exportAIReport()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm font-medium">
+                            <i class="fas fa-download mr-1"></i>Export AI Report
+                        </button>
+                    </div>
+                </div>`;
+            }
+            
 
             // Enhanced AI Overview Optimization
             if (ai.aiOverviewOptimization) {
@@ -1131,76 +1214,6 @@
                             <strong class="text-blue-300">Recommendations:</strong>
                             <ul class="mt-1 space-y-1 text-gray-300">
                                 ${aio.recommendations.slice(0, 3).map(r => `<li>• ${r}</li>`).join('')}
-                            </ul>
-                        </div>
-                    ` : ''}
-                </div>`;
-            }
-
-            // LLM Optimization
-            if (ai.llmOptimization) {
-                const llm = ai.llmOptimization;
-                html += `
-                <div class="test-result bg-green-900/20 rounded-lg p-4">
-                    <h3 class="font-semibold text-green-400 mb-3 flex items-center gap-2">
-                        <i class="fas fa-robot"></i>
-                        LLM Crawler Optimization
-                        <span class="text-sm font-normal text-green-300">${llm.score}%</span>
-                    </h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                        <div class="text-center">
-                            <div class="text-2xl font-bold text-green-400">${llm.citationFriendly}%</div>
-                            <div class="text-xs text-gray-400">Citation-Friendly</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-2xl font-bold text-green-400">${llm.semanticStructure}%</div>
-                            <div class="text-xs text-gray-400">Semantic Structure</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-2xl font-bold text-green-400">${llm.factualContent}%</div>
-                            <div class="text-xs text-gray-400">Factual Content</div>
-                        </div>
-                    </div>
-                    ${llm.recommendations.length > 0 ? `
-                        <div class="text-sm">
-                            <strong class="text-green-300">Recommendations:</strong>
-                            <ul class="mt-1 space-y-1 text-gray-300">
-                                ${llm.recommendations.slice(0, 3).map(r => `<li>• ${r}</li>`).join('')}
-                            </ul>
-                        </div>
-                    ` : ''}
-                </div>`;
-            }
-
-            // Content Structure
-            if (ai.contentStructure) {
-                const cs = ai.contentStructure;
-                html += `
-                <div class="test-result bg-purple-900/20 rounded-lg p-4">
-                    <h3 class="font-semibold text-purple-400 mb-3 flex items-center gap-2">
-                        <i class="fas fa-sitemap"></i>
-                        AI Content Structure
-                        <span class="text-sm font-normal text-purple-300">${cs.score}%</span>
-                    </h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                        <div class="text-center">
-                            <div class="text-2xl font-bold text-purple-400">${cs.hierarchyScore}%</div>
-                            <div class="text-xs text-gray-400">Hierarchy</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-2xl font-bold text-purple-400">${cs.readabilityScore}%</div>
-                            <div class="text-xs text-gray-400">AI Readability</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-2xl font-bold text-purple-400">${cs.completenessScore}%</div>
-                            <div class="text-xs text-gray-400">Completeness</div>
-                        </div>
-                    </div>
-                    ${cs.recommendations.length > 0 ? `
-                        <div class="text-sm">
-                            <strong class="text-purple-300">Recommendations:</strong>
-                            <ul class="mt-1 space-y-1 text-gray-300">
-                                ${cs.recommendations.slice(0, 3).map(r => `<li>• ${r}</li>`).join('')}
                             </ul>
                         </div>
                     ` : ''}
@@ -1239,6 +1252,52 @@
 
             html += '</div>';
             return html;
+        }
+
+        function renderAISurfaces(s) {
+            const color = s.score >= 80 ? 'status-good' : s.score >= 60 ? 'status-warning' : 'status-error';
+            const weights = s.weights || {};
+            const subs = s.subs || {};
+            let html = `
+                <div class="test-result bg-gray-800/30 rounded-lg p-4 mt-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="font-semibold">AI Surfaces Readiness</div>
+                        <div class="text-lg font-bold ${color}">${s.score}/100 (${s.grade})</div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                        ${Object.entries(subs).map(([k,v]) => {
+                            const w = weights[k] || 0;
+                            return `<div class=\"bg-gray-900/40 rounded p-3\"><div class=\"text-gray-400\">${k} (${w}%)</div><div class=\"font-semibold\">${Math.round(v)}</div></div>`;
+                        }).join('')}
+                    </div>
+                    ${s.recommendations && s.recommendations.length ? `
+                        <div class=\"mt-3\">
+                            <div class=\"text-gray-400 text-sm mb-1\">Recommendations</div>
+                            <ul class=\"text-xs text-gray-300 list-disc ml-5\">
+                                ${s.recommendations.map(r => `<li>${r}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                    <div class="mt-3 flex gap-2">
+                        <button onclick="exportAISurfacesCsv()" class="px-3 py-2 bg-gray-800 rounded hover:bg-gray-700 text-xs"><i class="fas fa-file-csv mr-1"></i>Export AI Score (CSV)</button>
+                    </div>
+                </div>
+            `;
+            return html;
+        }
+
+        function exportAISurfacesCsv() {
+            if (!currentResults?.tests?.aiSurfaces) return alert('No AI Surfaces data');
+            const s = currentResults.tests.aiSurfaces;
+            const headers = ['url','score','grade','answerClarity','structuredData','extractableFacts','citations','recency','technical'];
+            const subs = s.subs || {};
+            const row = [currentResults.url, s.score, s.grade, Math.round(subs.answerClarity||0), Math.round(subs.structuredData||0), Math.round(subs.extractableFacts||0), Math.round(subs.citations||0), Math.round(subs.recency||0), Math.round(subs.technical||0)];
+            const csv = [headers.join(','), row.join(',')].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `ai-surfaces-${(currentResults.url||'').replace(/[^a-z0-9]/gi,'_')}-${Date.now()}.csv`;
+            a.click();
         }
 
         async function generateLlmsTxt() {
@@ -1707,6 +1766,90 @@
                     }
                 }
 
+                // AI Surfaces Readiness Score integration
+                if (data.tests.aiSurfaces) {
+                    const aiSurfaces = data.tests.aiSurfaces;
+                    
+                    // Critical AI readiness issues (score < 30)
+                    if (aiSurfaces.overallScore < 30) {
+                        let criticalAIIssues = `Critical AI Surfaces readiness issues (Score: ${aiSurfaces.overallScore}/100):\n`;
+                        
+                        Object.entries(aiSurfaces.subMetrics).forEach(([key, metric]) => {
+                            if (metric.score < 30) {
+                                const metricName = key.replace(/([A-Z])/g, ' $1').toLowerCase();
+                                criticalAIIssues += `• Poor ${metricName}: ${metric.score}/100\n`;
+                                if (metric.recommendations.length > 0) {
+                                    criticalAIIssues += `  - ${metric.recommendations[0]}\n`;
+                                }
+                            }
+                        });
+                        
+                        priorities.critical.push({
+                            issue: criticalAIIssues.trim(),
+                            impact: 'Severely limited AI visibility, no Google AI Overview potential',
+                            effort: 'High',
+                            timeEstimate: '6-8 hours'
+                        });
+                    }
+                    // High priority AI readiness issues (score 30-50)
+                    else if (aiSurfaces.overallScore < 50) {
+                        let highAIIssues = `AI Surfaces readiness needs improvement (Score: ${aiSurfaces.overallScore}/100):\n`;
+                        
+                        Object.entries(aiSurfaces.subMetrics).forEach(([key, metric]) => {
+                            if (metric.score < 50) {
+                                const metricName = key.replace(/([A-Z])/g, ' $1').toLowerCase();
+                                highAIIssues += `• ${metricName}: ${metric.score}/100\n`;
+                            }
+                        });
+                        
+                        priorities.high.push({
+                            issue: highAIIssues.trim(),
+                            impact: 'Limited AI visibility, reduced Google AI Overview potential',
+                            effort: 'Medium',
+                            timeEstimate: '4-6 hours'
+                        });
+                    }
+                    // Medium priority AI readiness issues (score 50-70)
+                    else if (aiSurfaces.overallScore < 70) {
+                        let mediumAIIssues = `AI Surfaces optimization opportunities (Score: ${aiSurfaces.overallScore}/100):\n`;
+                        
+                        const weakestMetrics = Object.entries(aiSurfaces.subMetrics)
+                            .filter(([_, metric]) => metric.score < 70)
+                            .sort((a, b) => a[1].score - b[1].score)
+                            .slice(0, 3);
+                        
+                        weakestMetrics.forEach(([key, metric]) => {
+                            const metricName = key.replace(/([A-Z])/g, ' $1').toLowerCase();
+                            mediumAIIssues += `• Improve ${metricName}: ${metric.score}/100\n`;
+                        });
+                        
+                        priorities.medium.push({
+                            issue: mediumAIIssues.trim(),
+                            impact: 'Good AI visibility but room for optimization',
+                            effort: 'Medium',
+                            timeEstimate: '2-4 hours'
+                        });
+                    }
+                    
+                    // Add specific recommendations from lowest scoring metrics
+                    const lowestMetric = Object.entries(aiSurfaces.subMetrics)
+                        .sort((a, b) => a[1].score - b[1].score)[0];
+                    
+                    if (lowestMetric && lowestMetric[1].recommendations.length > 0) {
+                        const [metricKey, metric] = lowestMetric;
+                        const metricName = metricKey.replace(/([A-Z])/g, ' $1').toLowerCase();
+                        
+                        metric.recommendations.slice(0, 2).forEach((rec, index) => {
+                            priorities.medium.push({
+                                issue: `AI ${metricName} enhancement: ${rec}`,
+                                impact: 'Improved AI system understanding and citation potential',
+                                effort: 'Low',
+                                timeEstimate: '30-60 min'
+                            });
+                        });
+                    }
+                }
+
                 // Low priority issues
                 if (!data.tests.metadata?.og?.image) {
                     priorities.low.push({
@@ -1987,6 +2130,197 @@
             document.getElementById('resultsSection').classList.add('hidden');
             document.getElementById('urlInput').value = '';
             currentResults = null;
+        }
+        
+        function showAIScoringInfo() {
+            const modalContent = `
+                <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onclick="this.remove()">
+                    <div class="bg-gray-900 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+                        <div class="p-6 border-b border-gray-700">
+                            <div class="flex justify-between items-center">
+                                <h3 class="text-xl font-bold text-white">AI Surfaces Readiness Score Calculation</h3>
+                                <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-white">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="p-6 space-y-4">
+                            <p class="text-gray-300">The AI Surfaces Readiness Score evaluates how well your content performs with AI systems like Google AI Overviews, ChatGPT, and other LLM crawlers.</p>
+                            
+                            <div class="space-y-3">
+                                <h4 class="font-semibold text-white">Weighted Sub-Metrics:</h4>
+                                
+                                <div class="bg-gray-800/50 p-3 rounded">
+                                    <div class="font-medium text-indigo-400">Answer Clarity (25%)</div>
+                                    <div class="text-sm text-gray-400">Clear headings, structured Q&A format, direct answers, readability</div>
+                                </div>
+                                
+                                <div class="bg-gray-800/50 p-3 rounded">
+                                    <div class="font-medium text-indigo-400">Structured Data (20%)</div>
+                                    <div class="text-sm text-gray-400">Schema.org markup, JSON-LD implementation, AI-friendly schemas</div>
+                                </div>
+                                
+                                <div class="bg-gray-800/50 p-3 rounded">
+                                    <div class="font-medium text-indigo-400">Extractable Facts (20%)</div>
+                                    <div class="text-sm text-gray-400">Factual content, data points, statistics, concrete information</div>
+                                </div>
+                                
+                                <div class="bg-gray-800/50 p-3 rounded">
+                                    <div class="font-medium text-indigo-400">Citations & Sources (15%)</div>
+                                    <div class="text-sm text-gray-400">External links, authoritative sources, credible references</div>
+                                </div>
+                                
+                                <div class="bg-gray-800/50 p-3 rounded">
+                                    <div class="font-medium text-indigo-400">Content Recency (10%)</div>
+                                    <div class="text-sm text-gray-400">Last modified dates, fresh content, current information</div>
+                                </div>
+                                
+                                <div class="bg-gray-800/50 p-3 rounded">
+                                    <div class="font-medium text-indigo-400">Technical Optimization (10%)</div>
+                                    <div class="text-sm text-gray-400">Page speed, mobile-friendly, robots.txt, sitemap accessibility</div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-blue-900/30 border border-blue-500/20 rounded p-3">
+                                <div class="font-medium text-blue-400">Grading Scale:</div>
+                                <div class="text-sm text-blue-300 mt-1">
+                                    A: 90-100 | B: 80-89 | C: 70-79 | D: 60-69 | F: <60
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', modalContent);
+        }
+
+        function showDetailedAIAnalysis() {
+            // Get the data from either location
+            const analysis = window.currentResults?.tests?.aiSurfaces || 
+                           (currentResults?.tests?.ai?.aiSurfacesReadiness ? currentResults.tests.ai.aiSurfacesReadiness : null);
+            
+            if (!analysis) {
+                alert('No AI Surfaces analysis available');
+                return;
+            }
+            
+            // Create modal content
+            const modalContent = `
+                <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onclick="this.remove()">
+                    <div class="bg-gray-900 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+                        <div class="p-6 border-b border-gray-700">
+                            <div class="flex justify-between items-center">
+                                <h3 class="text-xl font-bold text-white">AI Surfaces Readiness Analysis</h3>
+                                <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-white">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="mt-2">
+                                <div class="text-3xl font-bold text-white">${analysis.overallScore}/100</div>
+                                <div class="text-lg text-gray-300">Grade: ${analysis.grade}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="p-6 space-y-6">
+                            ${Object.entries(analysis.subMetrics).map(([key, metric]) => `
+                                <div class="bg-gray-800 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-3">
+                                        <h4 class="font-semibold text-white capitalize">${key.replace(/([A-Z])/g, ' $1').trim()}</h4>
+                                        <span class="text-lg font-bold text-white">${metric.score}/100</span>
+                                    </div>
+                                    
+                                    ${metric.details.length > 0 ? `
+                                        <div class="mb-3">
+                                            <h5 class="text-sm font-medium text-gray-300 mb-2">Analysis Details:</h5>
+                                            <ul class="text-sm text-gray-400 space-y-1">
+                                                ${metric.details.map(detail => `<li>• ${detail}</li>`).join('')}
+                                            </ul>
+                                        </div>
+                                    ` : ''}
+                                    
+                                    ${metric.recommendations.length > 0 ? `
+                                        <div>
+                                            <h5 class="text-sm font-medium text-gray-300 mb-2">Recommendations:</h5>
+                                            <ul class="text-sm text-blue-400 space-y-1">
+                                                ${metric.recommendations.map(rec => `<li>• ${rec}</li>`).join('')}
+                                            </ul>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                            
+                            ${analysis.strengths.length > 0 ? `
+                                <div class="bg-green-900/30 border border-green-500/20 rounded-lg p-4">
+                                    <h4 class="font-semibold text-green-400 mb-2">Strengths</h4>
+                                    <ul class="text-sm text-green-300 space-y-1">
+                                        ${analysis.strengths.map(strength => `<li>• ${strength}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="bg-blue-900/30 border border-blue-500/20 rounded-lg p-4">
+                                <h4 class="font-semibold text-blue-400 mb-2">Top Recommendations</h4>
+                                <ul class="text-sm text-blue-300 space-y-1">
+                                    ${analysis.recommendations.slice(0, 5).map(rec => `<li>• ${rec}</li>`).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', modalContent);
+        }
+        
+        function exportAIReport() {
+            // Get the data from either location
+            const analysis = window.currentResults?.tests?.aiSurfaces || 
+                           (currentResults?.tests?.ai?.aiSurfacesReadiness ? currentResults.tests.ai.aiSurfacesReadiness : null);
+            
+            if (!analysis) {
+                alert('No AI Surfaces analysis available');
+                return;
+            }
+            const url = currentResults.url || 'unknown';
+            
+            // Create detailed AI report
+            const report = {
+                url: url,
+                analysisDate: new Date().toISOString(),
+                aiSurfacesReadiness: {
+                    overallScore: analysis.overallScore,
+                    grade: analysis.grade,
+                    subMetrics: analysis.subMetrics,
+                    strengths: analysis.strengths,
+                    recommendations: analysis.recommendations
+                },
+                summary: {
+                    topStrengths: analysis.strengths.slice(0, 3),
+                    criticalIssues: analysis.recommendations.slice(0, 3),
+                    quickWins: analysis.recommendations.filter(rec => 
+                        rec.includes('meta description') || 
+                        rec.includes('headings') || 
+                        rec.includes('alt text')
+                    ).slice(0, 3)
+                }
+            };
+            
+            // Export as JSON
+            const blob = new Blob([JSON.stringify(report, null, 2)], { 
+                type: 'application/json' 
+            });
+            const downloadUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `ai-surfaces-report-${url.replace(/[^a-z0-9]/gi, '_')}-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(downloadUrl);
         }
         
         // Initialize

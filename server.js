@@ -281,6 +281,10 @@ app.post('/api/audit', auditLimiter, async (req, res) => {
     console.log('🤖 Testing AI Readiness...');
     results.tests.ai = await testAIReadiness(url, results.tests.headers, $);
 
+    // 11b. AI Surfaces Readiness Score (six weighted sub-metrics)
+    console.log('🧠 Computing AI Surfaces Readiness...');
+    results.tests.aiSurfaces = await computeAISurfaces($, results.tests);
+
     // 12. Optional Lighthouse (env LIGHTHOUSE=1 or request flag)
     const shouldRunLH = (process.env.LIGHTHOUSE === '1') || Boolean(lhFlag);
     if (shouldRunLH) {
@@ -727,7 +731,8 @@ async function testAIReadiness(url, headersInfo, $) {
     score: 100,
     aiOverviewOptimization: analyzeAIOverviewReadiness($),
     llmOptimization: analyzeLLMOptimization($),
-    contentStructure: analyzeContentStructure($)
+    contentStructure: analyzeContentStructure($),
+    aiSurfacesReadiness: calculateAISurfacesReadiness($, url, headersInfo)
   };
 
   // robots.txt parse
@@ -779,6 +784,141 @@ async function testAIReadiness(url, headersInfo, $) {
   // Clamp score
   if (out.score < 0) out.score = 0;
   return out;
+}
+
+// AI Surfaces Readiness Score (0-100) with weighted sub-metrics
+async function computeAISurfaces($, tests) {
+  // Sub-metrics: Answer Clarity (25), Structured Data (20), Extractable Facts (20), Citations (15), Recency (10), Technical (10)
+  const weights = {
+    answerClarity: 25,
+    structuredData: 20,
+    extractableFacts: 20,
+    citations: 15,
+    recency: 10,
+    technical: 10
+  };
+
+  // Language-aware keyword sets (fi, sv, en, de, ja)
+  const pageLangRaw = (tests.accessibility?.lang || $('html').attr('lang') || '').toLowerCase();
+  const lang = pageLangRaw.slice(0, 2);
+  const bodyText = (($('body').text() || '').toLowerCase());
+  const qTerms = {
+    fi: ['mikä on', 'miten', 'ohje', 'use case', 'hyöty', 'ukk', 'kysymys'],
+    sv: ['vad är', 'hur man', 'vanliga frågor', 'användningsfall', 'fördel', 'faq'],
+    en: ['what is', 'how to', 'faq', 'use case', 'benefit'],
+    de: ['was ist', 'wie man', 'faq', 'anwendungsfall', 'vorteil'],
+    ja: ['とは', '使い方', 'よくある質問', 'ユースケース', 'メリット']
+  };
+  const citationTerms = {
+    fi: ['lähteet', 'viitteet'],
+    sv: ['källor', 'referenser'],
+    en: ['references', 'sources'],
+    de: ['quellen', 'verweise'],
+    ja: ['参考', '出典']
+  };
+  const recencyTerms = {
+    fi: ['päivitetty', 'julkaistu'],
+    sv: ['uppdaterad', 'publicerad'],
+    en: ['updated', 'published'],
+    de: ['aktualisiert', 'veröffentlicht'],
+    ja: ['更新', '公開']
+  };
+  const langSafe = (k) => (k in qTerms ? k : 'en');
+  const any = (text, arr) => arr.some(t => text.includes(t));
+
+  // Answer Clarity: presence of H1, Q/A patterns, clear headings
+  const answerClarity = (() => {
+    const h1 = $('h1').length;
+    const faqs = $('script[type="application/ld+json"]').filter((_, el)=>/FAQPage/.test($(el).html()||'')).length;
+    const qText = any(bodyText, qTerms[langSafe(lang)]);
+    let score = 0;
+    if (h1 >= 1) score += 40;
+    if (faqs > 0) score += 40;
+    if (qText) score += 20;
+    return score;
+  })();
+
+  // Structured Data: count/types + requiredIssues
+  const structuredData = (() => {
+    const types = tests.schema?.types?.length || 0;
+    const issues = (tests.schema?.requiredIssues || []).length;
+    let base = Math.min(100, types * 15); // up to ~3+ useful types
+    base -= Math.min(40, issues * 10);
+    return Math.max(0, base);
+  })();
+
+  // Extractable Facts: presence of key facts in meta/OG + definition lists
+  const extractableFacts = (() => {
+    let score = 0;
+    const hasMeta = Boolean(tests.metadata?.title && tests.metadata?.description);
+    const og = tests.metadata?.og || {};
+    const hasOG = Boolean(og.title || og.description || og.image);
+    const dl = $('dl dt, dl dd').length > 2;
+    if (hasMeta) score += 40;
+    if (hasOG) score += 40;
+    if (dl) score += 20;
+    return score;
+  })();
+
+  // Citations: external links and rel attributes
+  const citations = (() => {
+    const external = $('a[href^="http"]:not([href*="' + (tests.seo ? new URL('https://example.com').origin : '') + '"])').length; // rough
+    const rels = $('a[rel~="nofollow"], a[rel~="noopener"]').length;
+    let score = 0;
+    if (external > 3) score += 60; else if (external > 0) score += 40;
+    if (rels > 2) score += 20; else if (rels > 0) score += 10;
+    // bonus for presence of references section
+    if (any(bodyText, citationTerms[langSafe(lang)])) score += 20;
+    return Math.min(100, score);
+  })();
+
+  // Recency: look for datePublished/dateModified
+  const recency = (() => {
+    let score = 0;
+    const text = bodyText;
+    const hasDates = /202[3-9]|202[0-9]-\d{2}-\d{2}/.test(text);
+    const jsonLdDates = $('script[type="application/ld+json"]').filter((_, el)=>/(datePublished|dateModified)/.test($(el).html()||'')).length;
+    if (hasDates) score += 50;
+    if (jsonLdDates) score += 50;
+    // language keywords for recency
+    if (any(text, recencyTerms[langSafe(lang)])) score = Math.min(100, score + 10);
+    return Math.min(100, score);
+  })();
+
+  // Technical: headers & robots/sitemap/https
+  const technical = (() => {
+    let score = 0;
+    if (tests.seo?.https) score += 30;
+    if (tests.files?.robots?.exists) score += 20;
+    if (tests.files?.sitemap?.exists) score += 20;
+    if (tests.headers?.cdn) score += 15;
+    const perfOK = tests.performance?.score && (tests.performance.score.fcp !== 'poor' && tests.performance.score.loadTime !== 'poor');
+    if (perfOK) score += 15;
+    return Math.min(100, score);
+  })();
+
+  const subs = { answerClarity, structuredData, extractableFacts, citations, recency, technical };
+  const total = (
+    answerClarity * (weights.answerClarity/100) +
+    structuredData * (weights.structuredData/100) +
+    extractableFacts * (weights.extractableFacts/100) +
+    citations * (weights.citations/100) +
+    recency * (weights.recency/100) +
+    technical * (weights.technical/100)
+  );
+
+  const score = Math.round(total);
+  const grade = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';
+
+  const recommendations = [];
+  if (answerClarity < 60) recommendations.push('Selkeytä vastausrakennetta: lisää H1, FAQ/Q&A‑osio');
+  if (structuredData < 60) recommendations.push('Laajenna schemaa ja korjaa puuttuvat pakolliset kentät');
+  if (extractableFacts < 60) recommendations.push('Lisää tiiviitä faktoja (meta/OG, määrittelylistat)');
+  if (citations < 60) recommendations.push('Lisää viitteitä ja lähdelinkkejä; huomioi rel‑attribuutit');
+  if (recency < 60) recommendations.push('Päivitä julkaisu/muokkauspäivä (JSON‑LD ja sivulle)');
+  if (technical < 60) recommendations.push('Paranna teknistä pohjaa (HTTPS, robots, sitemap, suorituskyky)');
+
+  return { score, grade, weights, subs, recommendations };
 }
 
 // Analyze Google AI Overview readiness
@@ -956,6 +1096,581 @@ function analyzeContentStructure($) {
   analysis.score = analysis.hierarchyScore + analysis.readabilityScore + analysis.completenessScore;
   
   return analysis;
+}
+
+// Calculate comprehensive AI Surfaces Readiness Score
+function calculateAISurfacesReadiness($, url, headersInfo) {
+  const analysis = {
+    overallScore: 0,
+    subMetrics: {
+      answerClarity: { score: 0, details: [], recommendations: [] },
+      structuredData: { score: 0, details: [], recommendations: [] },
+      extractableFacts: { score: 0, details: [], recommendations: [] },
+      citations: { score: 0, details: [], recommendations: [] },
+      recency: { score: 0, details: [], recommendations: [] },
+      technicalOptimization: { score: 0, details: [], recommendations: [] }
+    },
+    grade: 'F',
+    recommendations: [],
+    strengths: []
+  };
+
+  // 1. Answer Clarity (25% weight)
+  const answerClarity = analyzeAnswerClarity($);
+  analysis.subMetrics.answerClarity = answerClarity;
+
+  // 2. Structured Data Quality (20% weight)
+  const structuredData = analyzeStructuredDataQuality($);
+  analysis.subMetrics.structuredData = structuredData;
+
+  // 3. Extractable Facts (20% weight)
+  const extractableFacts = analyzeExtractableFacts($);
+  analysis.subMetrics.extractableFacts = extractableFacts;
+
+  // 4. Citations and Sources (15% weight)
+  const citations = analyzeCitations($);
+  analysis.subMetrics.citations = citations;
+
+  // 5. Content Recency (10% weight)
+  const recency = analyzeContentRecency($, url);
+  analysis.subMetrics.recency = recency;
+
+  // 6. Technical Optimization (10% weight)
+  const technical = analyzeTechnicalOptimization($, headersInfo);
+  analysis.subMetrics.technicalOptimization = technical;
+
+  // Calculate weighted overall score
+  analysis.overallScore = Math.round(
+    (answerClarity.score * 0.25) +
+    (structuredData.score * 0.20) +
+    (extractableFacts.score * 0.20) +
+    (citations.score * 0.15) +
+    (recency.score * 0.10) +
+    (technical.score * 0.10)
+  );
+
+  // Assign grade
+  if (analysis.overallScore >= 90) analysis.grade = 'A+';
+  else if (analysis.overallScore >= 80) analysis.grade = 'A';
+  else if (analysis.overallScore >= 70) analysis.grade = 'B';
+  else if (analysis.overallScore >= 60) analysis.grade = 'C';
+  else if (analysis.overallScore >= 50) analysis.grade = 'D';
+  else analysis.grade = 'F';
+
+  // Compile top recommendations
+  const allRecommendations = [
+    ...answerClarity.recommendations,
+    ...structuredData.recommendations,
+    ...extractableFacts.recommendations,
+    ...citations.recommendations,
+    ...recency.recommendations,
+    ...technical.recommendations
+  ];
+  analysis.recommendations = allRecommendations.slice(0, 5);
+
+  // Compile strengths
+  const allStrengths = [];
+  if (answerClarity.score >= 80) allStrengths.push('Excellent answer clarity and structure');
+  if (structuredData.score >= 80) allStrengths.push('Comprehensive structured data implementation');
+  if (extractableFacts.score >= 80) allStrengths.push('Rich extractable facts and data');
+  if (citations.score >= 80) allStrengths.push('Strong citation and source quality');
+  if (recency.score >= 80) allStrengths.push('Fresh and up-to-date content');
+  if (technical.score >= 80) allStrengths.push('Optimal technical performance');
+  analysis.strengths = allStrengths;
+
+  return analysis;
+}
+
+// Analyze answer clarity for AI systems
+function analyzeAnswerClarity($) {
+  const result = { score: 0, details: [], recommendations: [] };
+  let score = 0;
+
+  // Direct answer patterns
+  const directAnswers = $('p').filter((i, el) => {
+    const text = $(el).text();
+    return text.length > 50 && text.length < 300 && (
+      text.toLowerCase().includes('the answer is') ||
+      text.toLowerCase().includes('in summary') ||
+      text.toLowerCase().includes('to summarize') ||
+      /^[A-Z].*\sis\s/.test(text) ||
+      /^[A-Z].*\sare\s/.test(text)
+    );
+  }).length;
+
+  if (directAnswers > 0) {
+    score += 25;
+    result.details.push(`Found ${directAnswers} direct answer patterns`);
+  } else {
+    result.recommendations.push('Add direct answer statements (e.g., "The answer is...", "X is...")');
+  }
+
+  // Question-based headings
+  const questionHeadings = $('h1, h2, h3, h4').filter((i, el) => {
+    const text = $(el).text().toLowerCase();
+    return text.includes('?') || 
+           /^(what|how|why|when|where|which|who)\s/.test(text) ||
+           text.includes('what is') || text.includes('how to');
+  }).length;
+
+  if (questionHeadings >= 2) {
+    score += 20;
+    result.details.push(`${questionHeadings} question-based headings found`);
+  } else {
+    result.recommendations.push('Add question-based headings (What is X?, How to Y?)');
+  }
+
+  // List and step structures
+  const lists = $('ol, ul').length;
+  const definitionLists = $('dl').length;
+  
+  if (lists >= 2) {
+    score += 15;
+    result.details.push(`${lists} structured lists found`);
+  } else {
+    result.recommendations.push('Add more structured lists for step-by-step information');
+  }
+
+  // Clear definitions
+  const definitions = $('p').filter((i, el) => {
+    const text = $(el).text().toLowerCase();
+    return text.includes(' is a ') || text.includes(' are a ') || 
+           text.includes(' means ') || text.includes(' refers to ');
+  }).length;
+
+  if (definitions > 0) {
+    score += 15;
+    result.details.push(`${definitions} clear definitions found`);
+  } else {
+    result.recommendations.push('Add clear definitions using "X is a..." patterns');
+  }
+
+  // Summary sections
+  const summaries = $('h2, h3, h4').filter((i, el) => {
+    const text = $(el).text().toLowerCase();
+    return text.includes('summary') || text.includes('conclusion') || 
+           text.includes('key points') || text.includes('takeaways');
+  }).length;
+
+  if (summaries > 0) {
+    score += 15;
+    result.details.push('Summary sections detected');
+  } else {
+    result.recommendations.push('Add summary or key takeaways sections');
+  }
+
+  // Table data for comparisons
+  const tables = $('table').length;
+  if (tables > 0) {
+    score += 10;
+    result.details.push(`${tables} data tables for comparisons`);
+  }
+
+  result.score = Math.min(100, score);
+  return result;
+}
+
+// Analyze structured data quality
+function analyzeStructuredDataQuality($) {
+  const result = { score: 0, details: [], recommendations: [] };
+  let score = 0;
+
+  // JSON-LD presence and types
+  const jsonLdScripts = $('script[type="application/ld+json"]');
+  const schemaTypes = new Set();
+  
+  jsonLdScripts.each((i, elem) => {
+    try {
+      const content = $(elem).html();
+      const parsed = JSON.parse(content);
+      
+      const extractTypes = (obj) => {
+        if (obj && obj['@type']) {
+          const types = Array.isArray(obj['@type']) ? obj['@type'] : [obj['@type']];
+          types.forEach(type => schemaTypes.add(type));
+        }
+        if (obj && obj['@graph']) {
+          obj['@graph'].forEach(extractTypes);
+        }
+      };
+      
+      if (Array.isArray(parsed)) {
+        parsed.forEach(extractTypes);
+      } else {
+        extractTypes(parsed);
+      }
+    } catch (e) {
+      // Invalid JSON-LD
+    }
+  });
+
+  if (schemaTypes.size > 0) {
+    score += 30;
+    result.details.push(`${schemaTypes.size} schema types: ${Array.from(schemaTypes).join(', ')}`);
+    
+    // Bonus for AI-friendly types
+    const aiTypes = ['Article', 'BlogPosting', 'NewsArticle', 'HowTo', 'QAPage', 'FAQPage', 'Product', 'Organization', 'Person', 'Event'];
+    const foundAiTypes = Array.from(schemaTypes).filter(type => aiTypes.includes(type));
+    if (foundAiTypes.length > 0) {
+      score += 20;
+      result.details.push(`AI-friendly types: ${foundAiTypes.join(', ')}`);
+    }
+  } else {
+    result.recommendations.push('Add JSON-LD structured data for better AI understanding');
+  }
+
+  // Check for rich properties
+  jsonLdScripts.each((i, elem) => {
+    try {
+      const content = $(elem).html();
+      const parsed = JSON.parse(content);
+      const jsonStr = JSON.stringify(parsed);
+      
+      // Essential properties for AI
+      const properties = ['headline', 'description', 'author', 'datePublished', 'dateModified', 'image', 'url'];
+      const foundProps = properties.filter(prop => jsonStr.includes(`"${prop}"`));
+      
+      if (foundProps.length >= 4) {
+        score += 25;
+        result.details.push(`Rich properties: ${foundProps.join(', ')}`);
+      } else {
+        result.recommendations.push(`Add missing properties: ${properties.filter(p => !foundProps.includes(p)).join(', ')}`);
+      }
+    } catch (e) {
+      // Skip invalid JSON
+    }
+  });
+
+  // Microdata fallback check
+  const microdataItems = $('[itemscope]').length;
+  if (microdataItems > 0 && schemaTypes.size === 0) {
+    score += 10;
+    result.details.push(`${microdataItems} microdata items (consider upgrading to JSON-LD)`);
+    result.recommendations.push('Consider migrating microdata to JSON-LD for better AI compatibility');
+  }
+
+  // Breadcrumb markup
+  const breadcrumbs = $('[typeof="BreadcrumbList"], script:contains("BreadcrumbList")').length;
+  if (breadcrumbs > 0) {
+    score += 15;
+    result.details.push('Breadcrumb navigation markup found');
+  } else {
+    result.recommendations.push('Add BreadcrumbList schema for better page context');
+  }
+
+  result.score = Math.min(100, score);
+  return result;
+}
+
+// Analyze extractable facts and data
+function analyzeExtractableFacts($) {
+  const result = { score: 0, details: [], recommendations: [] };
+  let score = 0;
+
+  // Statistical data
+  const bodyText = $('body').text();
+  const statistics = bodyText.match(/\d+(\.\d+)?%|\d+(\,\d{3})*\s*(users|people|customers|companies|dollars|€|£|\$)/gi) || [];
+  
+  if (statistics.length >= 3) {
+    score += 25;
+    result.details.push(`${statistics.length} statistical data points found`);
+  } else {
+    result.recommendations.push('Include more statistical data and specific numbers');
+  }
+
+  // Dates and temporal information
+  const dates = bodyText.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|\d{4}|\d{1,2}\/\d{1,2}\/\d{4})\b/gi) || [];
+  
+  if (dates.length >= 2) {
+    score += 15;
+    result.details.push(`${dates.length} dates and temporal references`);
+  } else {
+    result.recommendations.push('Add specific dates and temporal context');
+  }
+
+  // Named entities (people, places, organizations)
+  const capitalizedWords = bodyText.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) || [];
+  const uniqueEntities = [...new Set(capitalizedWords)].filter(word => 
+    word.length > 3 && !['This', 'That', 'The', 'And', 'But', 'For', 'With'].includes(word)
+  );
+  
+  if (uniqueEntities.length >= 5) {
+    score += 20;
+    result.details.push(`${uniqueEntities.length} named entities identified`);
+  } else {
+    result.recommendations.push('Include more specific names, places, and organizations');
+  }
+
+  // Quotable facts (short, precise statements)
+  const quotableFacts = $('p').filter((i, el) => {
+    const text = $(el).text();
+    return text.length > 30 && text.length < 200 && (
+      text.includes('%') || text.includes('study') || text.includes('research') ||
+      text.includes('according to') || /\d+/.test(text)
+    );
+  }).length;
+
+  if (quotableFacts >= 3) {
+    score += 20;
+    result.details.push(`${quotableFacts} quotable fact statements`);
+  } else {
+    result.recommendations.push('Create more short, quotable fact statements with supporting data');
+  }
+
+  // Structured data like addresses, phone numbers, emails
+  const contactInfo = bodyText.match(/@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\+?\d{1,4}[-.\s]?\(?\d{1,3}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4}|\d{1,5}\s+[A-Z][a-z]+\s+(Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln)/gi) || [];
+  
+  if (contactInfo.length > 0) {
+    score += 10;
+    result.details.push('Contact information and addresses found');
+  }
+
+  // Product information, prices, specifications
+  const productInfo = bodyText.match(/\$\d+|\€\d+|£\d+|price|cost|specification|feature|dimension|weight|size/gi) || [];
+  
+  if (productInfo.length >= 3) {
+    score += 10;
+    result.details.push('Product information and specifications detected');
+  }
+
+  result.score = Math.min(100, score);
+  return result;
+}
+
+// Analyze citations and source quality
+function analyzeCitations($) {
+  const result = { score: 0, details: [], recommendations: [] };
+  let score = 0;
+
+  // Source attribution patterns
+  const attributions = $('body').text().match(/according to|source:|via |per |citing |research by|study by|data from|reported by/gi) || [];
+  
+  if (attributions.length >= 2) {
+    score += 30;
+    result.details.push(`${attributions.length} source attributions found`);
+  } else {
+    result.recommendations.push('Add source attributions (e.g., "according to...", "research by...")');
+  }
+
+  // External links to authoritative sources
+  const externalLinks = $('a[href^="http"]').filter((i, el) => {
+    const href = $(el).attr('href').toLowerCase();
+    return !href.includes(new URL($('base').attr('href') || 'http://example.com').hostname);
+  });
+
+  const authoritativeLinks = externalLinks.filter((i, el) => {
+    const href = $(el).attr('href').toLowerCase();
+    return href.includes('gov') || href.includes('edu') || href.includes('org') ||
+           href.includes('wikipedia') || href.includes('pubmed') || href.includes('scholar.google');
+  }).length;
+
+  if (authoritativeLinks >= 2) {
+    score += 25;
+    result.details.push(`${authoritativeLinks} links to authoritative sources`);
+  } else {
+    result.recommendations.push('Link to more authoritative sources (.gov, .edu, Wikipedia, academic papers)');
+  }
+
+  // Publication dates near claims
+  const bodyText = $('body').text();
+  const recentYears = bodyText.match(/20(1[8-9]|2[0-5])/g) || [];
+  
+  if (recentYears.length >= 2) {
+    score += 15;
+    result.details.push('Recent publication dates found in content');
+  } else {
+    result.recommendations.push('Include publication dates for claims and statistics');
+  }
+
+  // Primary source indicators
+  const primarySources = bodyText.match(/original research|primary study|first-hand|direct observation|official report|government data/gi) || [];
+  
+  if (primarySources.length > 0) {
+    score += 20;
+    result.details.push('Primary source indicators detected');
+  } else {
+    result.recommendations.push('Reference primary sources and original research when possible');
+  }
+
+  // Bibliography or references section
+  const refSections = $('h2, h3, h4').filter((i, el) => {
+    const text = $(el).text().toLowerCase();
+    return text.includes('reference') || text.includes('source') || text.includes('bibliography');
+  }).length;
+
+  if (refSections > 0) {
+    score += 10;
+    result.details.push('Dedicated references or sources section found');
+  } else {
+    result.recommendations.push('Consider adding a references or sources section');
+  }
+
+  result.score = Math.min(100, score);
+  return result;
+}
+
+// Analyze content recency and freshness
+function analyzeContentRecency($, url) {
+  const result = { score: 0, details: [], recommendations: [] };
+  let score = 0;
+
+  // Published and modified dates in schema
+  let hasPublishedDate = false;
+  let hasModifiedDate = false;
+  
+  $('script[type="application/ld+json"]').each((i, elem) => {
+    try {
+      const content = $(elem).html();
+      const parsed = JSON.parse(content);
+      const jsonStr = JSON.stringify(parsed);
+      
+      if (jsonStr.includes('datePublished')) {
+        hasPublishedDate = true;
+        score += 20;
+      }
+      if (jsonStr.includes('dateModified')) {
+        hasModifiedDate = true;
+        score += 20;
+      }
+    } catch (e) {
+      // Invalid JSON
+    }
+  });
+
+  if (hasPublishedDate) result.details.push('Published date in structured data');
+  if (hasModifiedDate) result.details.push('Modified date in structured data');
+  
+  if (!hasPublishedDate) result.recommendations.push('Add datePublished to structured data');
+  if (!hasModifiedDate) result.recommendations.push('Add dateModified to structured data');
+
+  // Recent dates in content
+  const currentYear = new Date().getFullYear();
+  const bodyText = $('body').text();
+  const recentDates = bodyText.match(new RegExp(`\\b(${currentYear}|${currentYear-1}|${currentYear-2})\\b`, 'g')) || [];
+  
+  if (recentDates.length >= 3) {
+    score += 25;
+    result.details.push('Recent dates found throughout content');
+  } else {
+    result.recommendations.push('Include recent dates and current year references');
+  }
+
+  // "Updated" or "revised" indicators
+  const updateIndicators = bodyText.match(/updated|revised|modified|current as of|last reviewed/gi) || [];
+  
+  if (updateIndicators.length > 0) {
+    score += 15;
+    result.details.push('Content freshness indicators found');
+  } else {
+    result.recommendations.push('Add "last updated" or "current as of" indicators');
+  }
+
+  // Time-sensitive content warnings
+  const timeSensitive = bodyText.match(/as of|current|latest|now|today|this year|recently/gi) || [];
+  
+  if (timeSensitive.length >= 3) {
+    score += 10;
+    result.details.push('Time-sensitive language detected');
+  }
+
+  // Copyright year
+  const copyrightYears = bodyText.match(/copyright.*(\d{4})|©.*(\d{4})/gi) || [];
+  const latestCopyright = copyrightYears.length > 0 ? 
+    Math.max(...copyrightYears.map(c => parseInt(c.match(/\d{4}/)[0]))) : 0;
+  
+  if (latestCopyright >= currentYear - 1) {
+    score += 10;
+    result.details.push(`Current copyright year (${latestCopyright})`);
+  } else {
+    result.recommendations.push('Update copyright year to current year');
+  }
+
+  result.score = Math.min(100, score);
+  return result;
+}
+
+// Analyze technical optimization for AI crawlers
+function analyzeTechnicalOptimization($, headersInfo) {
+  const result = { score: 0, details: [], recommendations: [] };
+  let score = 0;
+
+  // Page loading speed indicators
+  const resourceCount = $('img, script, link[rel="stylesheet"]').length;
+  
+  if (resourceCount < 50) {
+    score += 20;
+    result.details.push(`Reasonable resource count (${resourceCount})`);
+  } else {
+    result.recommendations.push('Optimize page resources for faster loading');
+  }
+
+  // Critical rendering path
+  const inlineStyles = $('style').length;
+  const inlineScripts = $('script:not([src])').length;
+  
+  if (inlineStyles <= 2 && inlineScripts <= 3) {
+    score += 15;
+    result.details.push('Minimal inline styles and scripts');
+  } else {
+    result.recommendations.push('Minimize inline styles and scripts');
+  }
+
+  // Meta robots and indexing directives
+  const metaRobots = $('meta[name="robots"]').attr('content');
+  const noIndex = metaRobots && metaRobots.toLowerCase().includes('noindex');
+  const noSnippet = metaRobots && metaRobots.toLowerCase().includes('nosnippet');
+  
+  if (!noIndex && !noSnippet) {
+    score += 20;
+    result.details.push('Page allows indexing and snippets');
+  } else {
+    if (noIndex) result.recommendations.push('Remove noindex directive to allow AI crawling');
+    if (noSnippet) result.recommendations.push('Remove nosnippet directive to allow AI extraction');
+  }
+
+  // Structured content hierarchy
+  const headings = $('h1, h2, h3, h4, h5, h6');
+  const h1Count = $('h1').length;
+  
+  if (h1Count === 1 && headings.length >= 3) {
+    score += 15;
+    result.details.push(`Proper heading hierarchy (${headings.length} headings, 1 H1)`);
+  } else {
+    result.recommendations.push('Ensure single H1 and logical heading hierarchy');
+  }
+
+  // Mobile-friendly viewport
+  const viewport = $('meta[name="viewport"]').attr('content');
+  
+  if (viewport && viewport.includes('width=device-width')) {
+    score += 10;
+    result.details.push('Mobile-responsive viewport configured');
+  } else {
+    result.recommendations.push('Add mobile-responsive viewport meta tag');
+  }
+
+  // Language declaration
+  const lang = $('html').attr('lang');
+  
+  if (lang) {
+    score += 10;
+    result.details.push(`Language declared (${lang})`);
+  } else {
+    result.recommendations.push('Add language attribute to html element');
+  }
+
+  // Semantic HTML elements
+  const semanticElements = $('article, section, header, footer, nav, aside, main').length;
+  
+  if (semanticElements >= 3) {
+    score += 10;
+    result.details.push('Good use of semantic HTML elements');
+  } else {
+    result.recommendations.push('Use more semantic HTML elements (article, section, etc.)');
+  }
+
+  result.score = Math.min(100, score);
+  return result;
 }
 
 // Build llms.txt content using heuristics
