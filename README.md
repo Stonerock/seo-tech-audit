@@ -15,9 +15,27 @@ A comprehensive SEO and technical audit tool designed for digital agencies and d
 
 Because the robots are taking over search results, might as well help them understand your content:
 
+- **🏆 AI Surfaces Readiness Score**: Comprehensive 0-100 scoring system with 6 weighted sub-metrics for AI optimization
 - **Google AI Overview Optimization**: Featured snippet potential, entity recognition, Q&A structure analysis
-- **LLM Crawler Optimization**: Citation-friendly content detection, semantic structure validation, factual vs opinion ratios
 - **Content Structure Analysis**: AI-readable hierarchy, optimal paragraph lengths, content completeness scoring
+
+#### AI Surfaces Readiness Score (Flagship Feature)
+
+Our proprietary scoring system evaluates content readiness for AI systems across 6 key dimensions:
+
+- **Answer Clarity (25%)**: Clear headings, Q&A format, direct answers, readability
+- **Structured Data (20%)**: Schema.org markup, JSON-LD implementation, AI-friendly schemas
+- **Extractable Facts (20%)**: Factual content, data points, statistics, concrete information
+- **Citations & Sources (15%)**: External links, authoritative sources, credible references
+- **Content Recency (10%)**: Last modified dates, fresh content, current information
+- **Technical Optimization (10%)**: Page speed, mobile-friendly, robots.txt accessibility
+
+**Unique Features:**
+- Interactive scoring methodology explanation
+- Detailed per-metric analysis and recommendations
+- Integration with Fix Priorities for actionable tasks
+- Export functionality for client reports
+- Visual dashboard with gradient scoring display
 
 ## Tech Stack
 
@@ -106,12 +124,19 @@ After any audit (the moment of truth):
 3. Each task includes effort estimate and business impact (so you can prioritize properly)
 4. Export as CSV for client reports or Markdown for your development backlog
 
-### AI Readiness Analysis
+### AI Surfaces Readiness Analysis
 
-The tool now analyzes how well your content performs with AI systems:
-- **Google AI Overview scores**: Because being featured in AI summaries is the new featured snippet
-- **LLM optimization metrics**: Making your content citation-worthy for ChatGPT and friends
-- **Content structure analysis**: Helping AI understand your brilliant thoughts
+The tool's flagship feature provides comprehensive AI optimization scoring:
+- **AI Surfaces Readiness Score**: 0-100 scoring with 6 weighted sub-metrics for complete AI optimization
+- **Interactive analysis**: Click the (i) icon to understand scoring methodology
+- **Detailed breakdown**: "Detailed Analysis" button opens comprehensive per-metric analysis
+- **Actionable insights**: Specific recommendations for each sub-metric
+- **Export reports**: Download detailed AI readiness reports for clients
+- **Fix Priorities integration**: AI issues automatically appear in actionable task lists
+
+Additional AI Analysis:
+- **Google AI Overview optimization**: Featured snippet potential and entity recognition
+- **Content structure scoring**: AI-readable hierarchy and content completeness
 
 ## API Endpoints
 
