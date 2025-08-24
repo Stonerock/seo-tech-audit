@@ -1,5 +1,7 @@
-name: Deploy to Cloudflare Pages
+name: Deploy to Cloudflare Pages (MVP Frontend-First)
 
+# MVP Strategy: Deploy frontend independently for faster iteration
+# Backend will be deployed separately to Google Cloud Run
 on:
   push:
     branches: [main, master]
@@ -41,7 +43,13 @@ jobs:
       - name: Install Wrangler CLI
         run: npm install -g wrangler
         
-      - name: Install dependencies for Tailwind build
+      - name: Run tests
+        run: npm test
+        env:
+          NODE_ENV: test
+        continue-on-error: false
+        
+      - name: Install dependencies for frontend build
         run: npm install
         
       - name: Build Tailwind CSS for production
