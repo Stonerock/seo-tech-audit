@@ -2,6 +2,18 @@
 // Optimized for cloud deployment with lazy loading
 
 require('dotenv').config();
+
+// Define missing globals for Node.js environment compatibility
+if (typeof File === 'undefined') {
+    global.File = class File {
+        constructor(fileBits, fileName, options = {}) {
+            this.name = fileName;
+            this.type = options.type || '';
+            this.size = fileBits.length || 0;
+        }
+    };
+}
+
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');

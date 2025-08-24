@@ -49,13 +49,15 @@ class OptimizedAuditOrchestrator {
                 basicPerformance,
                 basicAccessibility,
                 basicFiles,
-                basicMetadata
+                basicMetadata,
+                basicSchema
             ] = await Promise.allSettled([
                 this.checkBasicSEO(url),
                 this.checkBasicPerformance(url),
                 this.checkBasicAccessibility(url),
                 this.checkBasicFiles(url),
-                this.checkBasicMetadata(url)
+                this.checkBasicMetadata(url),
+                this.checkBasicSchema(url)
             ]);
 
             const results = {
@@ -67,7 +69,8 @@ class OptimizedAuditOrchestrator {
                     performance: basicPerformance.status === 'fulfilled' ? basicPerformance.value : { error: basicPerformance.reason?.message },
                     accessibility: basicAccessibility.status === 'fulfilled' ? basicAccessibility.value : { error: basicAccessibility.reason?.message },
                     files: basicFiles.status === 'fulfilled' ? basicFiles.value : { error: basicFiles.reason?.message },
-                    metadata: basicMetadata.status === 'fulfilled' ? basicMetadata.value : { error: basicMetadata.reason?.message }
+                    metadata: basicMetadata.status === 'fulfilled' ? basicMetadata.value : { error: basicMetadata.reason?.message },
+                    schema: basicSchema.status === 'fulfilled' ? basicSchema.value : { error: basicSchema.reason?.message }
                 },
                 mode: 'lightweight'
             };
@@ -156,7 +159,21 @@ class OptimizedAuditOrchestrator {
                 server: response.headers.get('server') || '',
                 cacheControl: response.headers.get('cache-control') || '',
                 compression: response.headers.get('content-encoding') || 'none',
-                score: responseTime < 1000 ? 100 : responseTime < 2000 ? 80 : responseTime < 3000 ? 60 : 40
+                score: responseTime < 1000 ? 100 : responseTime < 2000 ? 80 : responseTime < 3000 ? 60 : 40,
+                // Frontend-compatible structure
+                metrics: {
+                    firstContentfulPaint: responseTime * 0.6, // Estimate FCP as 60% of response time
+                    loadComplete: responseTime,
+                    resources: Math.ceil(contentLength / 10000) || 1, // Estimate resource count
+                    memory: {
+                        usedJSHeapSize: Math.round(contentLength / 1024 / 10) || 1 // Estimate memory usage
+                    }
+                },
+                scores: {
+                    overall: responseTime < 1500 ? 'good' : responseTime < 3000 ? 'needs-improvement' : 'poor',
+                    fcp: responseTime < 1800 ? 'good' : responseTime < 3000 ? 'needs-improvement' : 'poor',
+                    loadTime: responseTime < 3000 ? 'good' : responseTime < 5000 ? 'needs-improvement' : 'poor'
+                }
             };
         } catch (error) {
             throw new Error(`Performance check failed: ${error.message}`);
@@ -209,7 +226,21 @@ class OptimizedAuditOrchestrator {
                 imagesWithoutAlt: $('img:not([alt])').length,
                 totalImages: $('img').length,
                 hasLang: !!$('html').attr('lang'),
-                lang: $('html').attr('lang') || null
+                lang: $('html').attr('lang') || null,
+                // Frontend-compatible structure
+                heuristics: {
+                    images: {
+                        percentage: $('img').length > 0 ? Math.round(($('img:not([alt])').length / $('img').length) * 100) : 0,
+                        withoutAlt: $('img:not([alt])').length
+                    },
+                    headings: {
+                        h1Count: $('h1').length
+                    },
+                    links: {
+                        empty: $('a[href=""], a:not([href])').length
+                    },
+                    lang: $('html').attr('lang') || null
+                }
             };
         } catch (error) {
             throw new Error(`Accessibility check failed: ${error.message}`);
@@ -222,9 +253,11 @@ class OptimizedAuditOrchestrator {
         const baseUrl = new URL(url).origin;
 
         try {
-            const [robotsResponse, sitemapResponse] = await Promise.allSettled([
+            const [robotsResponse, sitemapResponse, rssResponse, llmsResponse] = await Promise.allSettled([
                 fetch(`${baseUrl}/robots.txt`, { timeout: 5000 }),
-                fetch(`${baseUrl}/sitemap.xml`, { timeout: 5000 })
+                fetch(`${baseUrl}/sitemap.xml`, { timeout: 5000 }),
+                fetch(`${baseUrl}/rss.xml`, { timeout: 5000 }),
+                fetch(`${baseUrl}/llms.txt`, { timeout: 5000 })
             ]);
 
             return {
@@ -235,6 +268,14 @@ class OptimizedAuditOrchestrator {
                 sitemap: {
                     exists: sitemapResponse.status === 'fulfilled' && sitemapResponse.value.ok,
                     url: `${baseUrl}/sitemap.xml`
+                },
+                rss: {
+                    exists: rssResponse.status === 'fulfilled' && rssResponse.value.ok,
+                    url: `${baseUrl}/rss.xml`
+                },
+                llms: {
+                    exists: llmsResponse.status === 'fulfilled' && llmsResponse.value.ok,
+                    url: `${baseUrl}/llms.txt`
                 }
             };
         } catch (error) {
@@ -292,6 +333,82 @@ class OptimizedAuditOrchestrator {
             };
         } catch (error) {
             throw new Error(`Metadata check failed: ${error.message}`);
+        }
+    }
+
+    // Basic schema detection
+    async checkBasicSchema(url) {
+        const fetch = require('node-fetch');
+        const cheerio = require('cheerio');
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+            const response = await fetch(url, { 
+                signal: controller.signal,
+                timeout: 10000,
+                headers: { 'User-Agent': 'SEO-Audit-Tool/2.1.0' },
+                size: 5 * 1024 * 1024
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const html = await response.text();
+            const $ = cheerio.load(html);
+
+            const jsonLdScripts = $('script[type="application/ld+json"]');
+            const microdataItems = $('[itemscope]');
+            const types = [];
+            const issues = [];
+
+            // Check JSON-LD
+            jsonLdScripts.each((i, script) => {
+                try {
+                    const content = $(script).html();
+                    if (content) {
+                        const data = JSON.parse(content);
+                        if (data['@type']) {
+                            types.push(data['@type']);
+                        } else if (Array.isArray(data)) {
+                            data.forEach(item => {
+                                if (item['@type']) types.push(item['@type']);
+                            });
+                        }
+                    }
+                } catch (e) {
+                    issues.push('Invalid JSON-LD syntax');
+                }
+            });
+
+            // Check microdata
+            microdataItems.each((i, el) => {
+                const itemType = $(el).attr('itemtype');
+                if (itemType) {
+                    const type = itemType.split('/').pop();
+                    types.push(type);
+                }
+            });
+
+            // Basic validation
+            if (types.length === 0) {
+                issues.push('No structured data found');
+            }
+
+            return {
+                types: [...new Set(types)], // Remove duplicates
+                totalSchemas: types.length,
+                jsonLdCount: jsonLdScripts.length,
+                microdataCount: microdataItems.length,
+                issues,
+                score: Math.max(0, 100 - (issues.length * 25))
+            };
+        } catch (error) {
+            throw new Error(`Schema check failed: ${error.message}`);
         }
     }
 
