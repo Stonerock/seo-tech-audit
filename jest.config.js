@@ -3,7 +3,7 @@
 // MVP Configuration: Focus on core functionality and key integrations
 // Edge cases in validation are skipped to ensure CI/CD pipeline stability
 
-module.exports = {
+export default {
   // Test environment
   testEnvironment: 'node',
   
