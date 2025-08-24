@@ -172,31 +172,50 @@
         }
         
         /* Attention Cards - improved layout with better spacing */
+        /* Attention Cards Responsive Layout */
         .attention-cards {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 2rem;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
             margin: 2rem 0;
+            width: 100%;
         }
         
-        @media (max-width: 768px) {
+        /* Tablet and smaller desktop - still try to fit horizontally */
+        @media (max-width: 1200px) {
+            .attention-cards {
+                gap: 1rem;
+            }
+        }
+        
+        /* Medium tablet - switch to 2 columns */
+        @media (max-width: 900px) {
+            .attention-cards {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1rem;
+            }
+        }
+        
+        /* Mobile: Stack vertically */
+        @media (max-width: 640px) {
             .attention-cards {
                 display: flex;
-                overflow-x: auto;
-                scroll-snap-type: x mandatory;
-                gap: 1.5rem;
-                padding-bottom: 1rem;
-                margin: 1rem 0;
+                flex-direction: column;
+                gap: 1rem;
+                margin: 1.5rem 0;
             }
             
             .attention-card {
-                min-width: 280px;
+                min-width: 100%;
                 flex-shrink: 0;
-                scroll-snap-align: start;
             }
-            
-            .attention-card:last-child {
-                margin-right: 1rem;
+        }
+        
+        /* Extra small mobile */
+        @media (max-width: 480px) {
+            .attention-cards {
+                gap: 0.75rem;
+                margin: 1rem 0;
             }
         }
         
@@ -228,6 +247,125 @@
         .attention-cards::-webkit-scrollbar-thumb:hover {
             background: rgba(0, 102, 255, 0.5);
         }
+        
+        /* Additional Mobile Optimizations */
+        @media (max-width: 640px) {
+            /* Hero section padding */
+            .hero-section {
+                padding: 1.5rem 1rem;
+            }
+            
+            /* Card content spacing */
+            .glass-card {
+                margin: 0 1rem;
+                border-radius: 1rem;
+            }
+            
+            /* Button text wrapping */
+            .btn-responsive {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            
+            /* Ensure proper touch targets */
+            button, .button {
+                min-height: 44px;
+                min-width: 44px;
+            }
+            
+            /* Improve text readability on mobile */
+            .text-responsive {
+                font-size: 0.875rem;
+                line-height: 1.5;
+            }
+            
+            /* Better spacing for stacked elements */
+            .mobile-stack > * + * {
+                margin-top: 1rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            /* Extra small mobile optimizations */
+            .glass-card {
+                margin: 0 0.5rem;
+                padding: 1rem !important;
+                border-radius: 0.75rem;
+            }
+            
+            h1 {
+                font-size: 2rem !important;
+                line-height: 1.2 !important;
+            }
+            
+            h2 {
+                font-size: 1.5rem !important;
+            }
+            
+            h3 {
+                font-size: 1.25rem !important;
+            }
+            
+            /* Compact button spacing */
+            .button-group {
+                gap: 0.5rem;
+            }
+        }
+        
+        /* Mobile-first responsive grid overrides */
+        @media (max-width: 768px) {
+            /* Convert 4-column grids to 2-column on mobile */
+            .grid-cols-2.md\\:grid-cols-4 {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            }
+            
+            /* Convert 3-column grids to 1-column on mobile */
+            .grid-cols-1.md\\:grid-cols-3 {
+                grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+            }
+            
+            /* Reduce gaps on mobile */
+            .gap-6 {
+                gap: 1rem !important;
+            }
+            
+            .gap-4 {
+                gap: 0.75rem !important;
+            }
+            
+            /* Stack flex items on mobile */
+            .flex-col-mobile {
+                flex-direction: column !important;
+            }
+            
+            /* Full width on mobile */
+            .w-full-mobile {
+                width: 100% !important;
+            }
+            
+            /* Hide on mobile */
+            .hidden-mobile {
+                display: none !important;
+            }
+            
+            /* Show only on mobile */
+            .mobile-only {
+                display: block !important;
+            }
+        }
+        
+        /* Hide mobile-only content by default */
+        .mobile-only {
+            display: none;
+        }
+        
+        @media (min-width: 769px) {
+            /* Show mobile-only content on desktop */
+            .mobile-only {
+                display: none !important;
+            }
+        }
     </style>
     <!-- Load Component Library -->
     <script src="components/attention-components.js"></script>
@@ -253,25 +391,26 @@
         </div>
     </nav>
 
-    <div class="container mx-auto px-6 py-8 max-w-7xl relative z-10" style="margin-top: 80px;">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 max-w-7xl relative z-10" style="margin-top: 60px;">
         
-        <!-- Modern Header -->
-        <div class="text-center mb-12">
-            <h1 class="text-4xl md:text-6xl font-bold mb-6 leading-tight">
+        <!-- Modern Header - Mobile Optimized -->
+        <div class="hero-section text-center mb-8 sm:mb-12">
+            <h1 class="text-3xl sm:text-4xl lg:text-6xl font-bold mb-4 sm:mb-6 leading-tight">
                 Attention is all you <span class="text-profound-blue">need.</span>
             </h1>
-            <p class="text-xl text-gray-300 mb-4 font-light">
+            <p class="text-lg sm:text-xl text-gray-300 mb-3 sm:mb-4 font-light px-2 sm:px-0">
                 A simple, no-fuss SEO & technical audit tool — built for the age of AI search.
             </p>
-            <p class="text-sm text-gray-400 mb-8 font-light max-w-3xl mx-auto">
+            <p class="text-sm sm:text-base text-gray-400 mb-6 sm:mb-8 font-light max-w-3xl mx-auto px-4 sm:px-0">
                 Because yes, "attention is all you need" in AI… but you'll also need schema markup, a polite robots.txt, and a way to explain bounce rate vs conversion rate.
             </p>
         </div>
         
-        <!-- Modern Input Section -->
-        <div class="glass-card rounded-2xl p-8 mb-8">
-            <div class="flex flex-col md:flex-row gap-4">
-                <div class="flex-1">
+        <!-- Modern Input Section - Mobile Optimized -->
+        <div class="glass-card rounded-2xl p-4 sm:p-6 lg:p-8 mb-8">
+            <div class="space-y-4">
+                <!-- URL Input Row -->
+                <div class="w-full">
                     <label class="block text-sm text-gray-400 mb-2 font-medium">
                         <i class="fas fa-globe mr-2"></i>Target URL
                     </label>
@@ -282,61 +421,86 @@
                         class="w-full px-4 py-3 bg-profound-gray rounded-lg text-white border border-profound-border focus:border-profound-blue focus:outline-none focus:ring-2 focus:ring-profound-blue/20 transition-colors"
                     >
                 </div>
-                <div class="flex items-end gap-2">
-                    <label class="flex items-center gap-2 text-sm text-gray-400 mb-1">
-                        <input type="checkbox" id="lhCheckbox" class="accent-profound-blue">
-                        Run Lighthouse (slower)
-                    </label>
-                    <div class="flex flex-col items-end">
-                        <button 
-                            onclick="startFullAudit()"
-                            id="auditBtn"
-                            class="px-8 py-3 bg-profound-blue text-white rounded-lg font-semibold hover:bg-blue-600 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <i class="fas fa-search"></i>
-                            <span>Run a Free Attention Report →</span>
-                        </button>
-                        <p class="text-xs text-gray-400 mt-2">
-                            (Takes ~30s. Robots will not be harmed in the process.)
-                        </p>
+                
+                <!-- Controls Section -->
+                <div class="space-y-3 sm:space-y-0">
+                    <!-- Primary Controls Row -->
+                    <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                        <!-- Lighthouse Checkbox -->
+                        <div class="flex items-center">
+                            <label class="flex items-center gap-2 text-sm text-gray-400">
+                                <input type="checkbox" id="lhCheckbox" class="accent-profound-blue">
+                                <span class="hidden sm:inline">Run Lighthouse (slower)</span>
+                                <span class="sm:hidden">Lighthouse</span>
+                            </label>
+                        </div>
+                        
+                        <!-- Primary Action Button -->
+                        <div class="flex-1 sm:flex-none">
+                            <button 
+                                onclick="startFullAudit()"
+                                id="auditBtn"
+                                class="w-full sm:w-auto px-4 sm:px-8 py-3 bg-profound-blue text-white rounded-lg font-semibold hover:bg-blue-600 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <i class="fas fa-search"></i>
+                                <span class="hidden md:inline">Run a Free Attention Report →</span>
+                                <span class="md:hidden">Analyze Site</span>
+                            </button>
+                            <p class="text-xs text-gray-400 mt-2 text-center sm:text-left">
+                                <span class="hidden sm:inline">(Takes ~30s. Robots will not be harmed in the process.)</span>
+                                <span class="sm:hidden">Takes ~30s</span>
+                            </p>
+                        </div>
                     </div>
-                    <button 
-                        onclick="startBatchAudit()"
-                        id="batchBtn"
-                        class="px-6 py-3 bg-profound-gray rounded-lg hover:bg-gray-600 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Analyze multiple URLs (separate by newline or comma)"
-                    >
-                        <i class="fas fa-layer-group"></i>
-                        <span>Batch</span>
-                    </button>
-                    <div class="flex items-center gap-2">
-                        <button 
-                            onclick="startSitemapAudit()"
-                            id="sitemapBtn"
-                            class="px-6 py-3 bg-success text-white rounded-lg hover:bg-green-700 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Skannaa koko sivusto sitemapin perusteella"
-                        >
-                            <i class="fas fa-sitemap"></i>
-                            <span>Sitemap Scan</span>
-                        </button>
-                        <input 
-                            type="number" 
-                            id="maxUrlsInput"
-                            placeholder="50"
-                            min="1"
-                            max="200"
-                            class="w-16 px-2 py-3 bg-profound-gray rounded text-white text-sm border border-profound-border focus:border-success focus:outline-none"
-                            title="Max URLs to analyze (1-200)"
-                        >
-                        <span class="text-xs text-gray-400">pages</span>
+                    
+                    <!-- Secondary Actions Row -->
+                    <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                        <!-- Left side buttons -->
+                        <div class="flex gap-2 flex-1">
+                            <button 
+                                onclick="startBatchAudit()"
+                                id="batchBtn"
+                                class="flex-1 sm:flex-none px-3 sm:px-6 py-3 bg-profound-gray rounded-lg hover:bg-gray-600 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Analyze multiple URLs"
+                            >
+                                <i class="fas fa-layer-group"></i>
+                                <span class="hidden sm:inline">Batch</span>
+                            </button>
+                            <button 
+                                onclick="clearCache()"
+                                class="flex-1 sm:flex-none px-3 sm:px-4 py-3 bg-profound-gray rounded-lg hover:bg-gray-600 transition-all duration-200 flex items-center justify-center"
+                                title="Clear cache"
+                            >
+                                <i class="fas fa-trash"></i>
+                                <span class="sm:hidden ml-1">Clear</span>
+                            </button>
+                        </div>
+                        
+                        <!-- Sitemap controls -->
+                        <div class="flex items-center gap-2 sm:gap-3">
+                            <button 
+                                onclick="startSitemapAudit()"
+                                id="sitemapBtn"
+                                class="flex-1 sm:flex-none px-3 sm:px-6 py-3 bg-success text-white rounded-lg hover:bg-green-700 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Scan entire sitemap"
+                            >
+                                <i class="fas fa-sitemap"></i>
+                                <span class="hidden sm:inline">Sitemap</span>
+                            </button>
+                            <div class="flex items-center gap-1 sm:gap-2">
+                                <input 
+                                    type="number" 
+                                    id="maxUrlsInput"
+                                    placeholder="50"
+                                    min="1"
+                                    max="200"
+                                    class="w-12 sm:w-16 px-2 py-3 bg-profound-gray rounded text-white text-sm border border-profound-border focus:border-success focus:outline-none text-center"
+                                    title="Max URLs to analyze (1-200)"
+                                >
+                                <span class="text-xs text-gray-400">pages</span>
+                            </div>
+                        </div>
                     </div>
-                    <button 
-                        onclick="clearCache()"
-                        class="px-4 py-3 bg-profound-gray rounded-lg hover:bg-gray-600 transition-all duration-200"
-                        title="Clear cache"
-                    >
-                        <i class="fas fa-trash"></i>
-                    </button>
                 </div>
             </div>
         </div>
@@ -369,7 +533,7 @@
                         <div class="text-sm text-gray-400">Overall Score</div>
                     </div>
                 </div>
-                <div id="executiveMetrics" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div id="executiveMetrics" class="w-full mb-6 sm:mb-8">
                     <!-- Executive metrics will be populated here -->
                 </div>
                 <div id="businessInsights" class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -396,12 +560,12 @@
                     <div class="text-2xl font-bold" id="issueCount">-</div>
                 </div>
             </div>
-            <!-- Schema & Structured Data -->
+            <!-- Structured Attention -->
             <div class="glass-card rounded-2xl overflow-hidden">
                 <div class="bg-profound-blue/10 border-b border-profound-border px-6 py-4">
                     <h2 class="text-xl font-semibold flex items-center gap-2">
-                        <i class="fas fa-code text-profound-blue"></i>
-                        Schema & Structured Data
+                        <span class="text-2xl">📋</span>
+                        Structured Attention — schema helps robots stop confusing you with your evil twin.
                     </h2>
                 </div>
                 <div id="schemaResults" class="p-6"></div>
@@ -418,23 +582,23 @@
                 <div id="metadataResults" class="p-6"></div>
             </div>
             
-            <!-- Performance Metrics -->
+            <!-- User Attention -->
             <div class="glass-card rounded-2xl overflow-hidden">
                 <div class="bg-success/10 border-b border-profound-border px-6 py-4">
                     <h2 class="text-xl font-semibold flex items-center gap-2">
-                        <i class="fas fa-tachometer-alt text-success"></i>
-                        Performance Metrics
+                        <span class="text-2xl">👥</span>
+                        User Attention — if people leave, robots don't matter.
                     </h2>
                 </div>
                 <div id="performanceResults" class="p-6"></div>
             </div>
             
-            <!-- Accessibility -->
+            <!-- Accessibility (part of User Attention) -->
             <div class="glass-card rounded-2xl overflow-hidden">
                 <div class="bg-success/10 border-b border-profound-border px-6 py-4">
                     <h2 class="text-xl font-semibold flex items-center gap-2">
-                        <i class="fas fa-universal-access text-success"></i>
-                        Accessibility Analysis
+                        <span class="text-2xl">♿</span>
+                        Accessibility — everyone deserves to use your site.
                     </h2>
                 </div>
                 <div id="accessibilityResults" class="p-6"></div>
@@ -520,12 +684,12 @@
                 </div>
             </div>
 
-            <!-- SEO Basics -->
+            <!-- Google Attention -->
             <div class="bg-gray-900/50 backdrop-blur-sm rounded-lg overflow-hidden">
                 <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 px-6 py-4 border-b border-gray-800">
                     <h2 class="text-xl font-semibold flex items-center gap-2">
-                        <i class="fas fa-search"></i>
-                        SEO Basics
+                        <span class="text-2xl">🔍</span>
+                        Google Attention — Google isn't psychic. Tell it who you are.
                     </h2>
                 </div>
                 <div id="seoResults" class="p-6"></div>
@@ -623,7 +787,10 @@
     </div>
     
     <script>
-        const BACKEND_URL = 'http://localhost:3001';
+        // Use Cloud Run backend for production, localhost for development
+        const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:3001'  // Local development
+            : 'https://seo-audit-backend-458683085682.us-central1.run.app';  // Optimized Cloud Run backend
         let currentResults = null;
         let components = null;
         
@@ -762,32 +929,47 @@
                     `;
                 }
             
-                // Business insights
+                // Business insights - only render if we have actual data
                 const businessImpact = extractBusinessImpacts(auditResults);
                 const quickWins = extractQuickWins(auditResults);
                 
                 const businessInsightsElement = document.getElementById('businessInsights');
                 if (businessInsightsElement) {
-                    businessInsightsElement.innerHTML = `
-                        <div class="business-impact rounded-xl p-6">
-                            <h3 class="font-semibold text-success mb-3 flex items-center">
-                                <i class="fas fa-chart-line mr-2"></i>
-                                Business Impact
-                            </h3>
-                            <ul class="space-y-2 text-sm text-gray-300">
-                                ${Array.isArray(businessImpact) ? businessImpact.map(item => `<li>• ${item || 'Loading...'}</li>`).join('') : '<li>• Analyzing impact...</li>'}
-                            </ul>
-                        </div>
-                        <div class="glass-card rounded-xl p-6">
-                            <h3 class="font-semibold text-profound-blue mb-3 flex items-center">
-                                <i class="fas fa-code mr-2"></i>
-                                Quick Wins Available
-                            </h3>
-                            <ul class="space-y-2 text-sm text-gray-300">
-                                ${Array.isArray(quickWins) ? quickWins.map(item => `<li>• ${item || 'Loading...'}</li>`).join('') : '<li>• Analyzing opportunities...</li>'}
-                            </ul>
-                        </div>
-                    `;
+                    // Only show business insights if we have actual data (not loading states)
+                    const hasBusinessImpact = Array.isArray(businessImpact) && businessImpact.length > 0 && 
+                        !businessImpact.some(item => !item || item.includes('Loading') || item.includes('Analyzing'));
+                    const hasQuickWins = Array.isArray(quickWins) && quickWins.length > 0 && 
+                        !quickWins.some(item => !item || item.includes('Loading') || item.includes('Analyzing'));
+                    
+                    if (hasBusinessImpact || hasQuickWins) {
+                        businessInsightsElement.innerHTML = `
+                            ${hasBusinessImpact ? `
+                                <div class="business-impact rounded-xl p-6">
+                                    <h3 class="font-semibold text-success mb-3 flex items-center">
+                                        <i class="fas fa-chart-line mr-2"></i>
+                                        Business Impact
+                                    </h3>
+                                    <ul class="space-y-2 text-sm text-gray-300">
+                                        ${businessImpact.map(item => `<li>• ${item}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
+                            ${hasQuickWins ? `
+                                <div class="glass-card rounded-xl p-6">
+                                    <h3 class="font-semibold text-profound-blue mb-3 flex items-center">
+                                        <i class="fas fa-code mr-2"></i>
+                                        Quick Wins Available
+                                    </h3>
+                                    <ul class="space-y-2 text-sm text-gray-300">
+                                        ${quickWins.map(item => `<li>• ${item}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
+                        `;
+                    } else {
+                        // Hide the business insights section entirely if no data
+                        businessInsightsElement.innerHTML = '';
+                    }
                 }
             } catch (error) {
                 console.error('Error in renderExecutiveSummary:', error);
@@ -890,11 +1072,8 @@
                 
                 const businessInsightsElement = document.getElementById('businessInsights');
                 if (businessInsightsElement) {
-                    businessInsightsElement.innerHTML = `
-                        <div class="col-span-2 text-center py-4 bg-gray-800/30 rounded-lg">
-                            <p class="text-gray-400">Business insights loading...</p>
-                        </div>
-                    `;
+                    // Don't show loading placeholder - just hide the section if no data
+                    businessInsightsElement.innerHTML = '';
                 }
             } catch (error) {
                 console.error('Error in renderExecutiveSummaryFallback:', error);
@@ -1335,7 +1514,9 @@
                     document.getElementById('auditBtn').disabled = true;
                 }
             } catch (error) {
-                updateServerStatus('offline', 'Backend not running - Run: npm start');
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const message = isLocal ? 'Backend not running - Run: npm start' : 'Backend temporarily unavailable - Please try again';
+                updateServerStatus('offline', message);
                 document.getElementById('auditBtn').disabled = true;
             }
         }
@@ -1727,11 +1908,57 @@
                 `;
             }
             
-            // Issues
+            // Add witty SEO microcopy based on the creative director's plan
+            const seoWittyIssues = [];
+            
+            // Canonical check
+            if (metadata.canonical) {
+                seoWittyIssues.push('• Canonical ✓ → No identity crisis here.');
+            } else {
+                seoWittyIssues.push('• Canonical ✗ → Google confused about which page is the real you.');
+            }
+            
+            // Open Graph checks with humor
+            if (metadata.og && metadata.og.title && metadata.og.description && metadata.og.image) {
+                seoWittyIssues.push('• Open Graph ✓ → Social previews won\'t look like garbage.');
+            } else {
+                seoWittyIssues.push('• Open Graph ✗ → Social shares will look like spam from 2009.');
+            }
+            
+            // Meta title/description checks
+            if (!metadata.title) {
+                seoWittyIssues.push('• Title tag ✗ → Even Google doesn\'t know what your page is about.');
+            } else if (metadata.title.length > 60) {
+                seoWittyIssues.push('• Title too long → Google will cut you off mid-sentence...');
+            } else {
+                seoWittyIssues.push('• Title tag ✓ → Google knows exactly who you are.');
+            }
+            
+            if (!metadata.description) {
+                seoWittyIssues.push('• Meta description ✗ → Your SERP snippet will be a random word salad.');
+            } else if (metadata.description.length > 160) {
+                seoWittyIssues.push('• Description too long → Google\'s gonna chop it like a bad haircut.');
+            } else {
+                seoWittyIssues.push('• Meta description ✓ → SERP snippets that actually make sense.');
+            }
+            
+            // Display witty SEO feedback
+            if (seoWittyIssues.length > 0) {
+                html += `
+                    <div class="test-result bg-blue-900/20 rounded-lg p-4 border border-blue-500/30">
+                        <h3 class="font-semibold mb-3 text-blue-400">SEO Reality Check</h3>
+                        <ul class="space-y-1 text-sm text-gray-300">
+                            ${seoWittyIssues.join('<br>')}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            // Original issues (keep for technical stuff)
             if (metadata.issues && metadata.issues.length > 0) {
                 html += `
-                    <div class="test-result bg-red-900/20 rounded-lg p-4">
-                        <h3 class="font-semibold mb-3 text-red-400">Issues Found</h3>
+                    <div class="test-result bg-red-900/20 rounded-lg p-4 mt-4">
+                        <h3 class="font-semibold mb-3 text-red-400">Technical Issues</h3>
                         <ul class="space-y-1 text-sm text-gray-400">
                             ${metadata.issues.map(issue => `<li>• ${issue}</li>`).join('')}
                         </ul>
@@ -1847,25 +2074,36 @@
                 `;
             }
             
-            // Add performance tips
+            // Add witty performance microcopy
             const tips = [];
-            if (metrics.firstContentfulPaint > 1800) {
-                tips.push('• Optimize First Contentful Paint (target: < 1.8s)');
+            if (metrics.firstContentfulPaint > 3000) {
+                tips.push('• Loading so slow, users aged waiting for it');
+            } else if (metrics.firstContentfulPaint > 1800) {
+                tips.push('• First paint took its sweet time (aim for < 1.8s)');
             }
-            if (metrics.loadComplete > 3000) {
-                tips.push('• Reduce total load time (target: < 3s)');
+            
+            if (metrics.loadComplete > 5000) {
+                tips.push('• Page load time: "Are we there yet?" levels of frustration');
+            } else if (metrics.loadComplete > 3000) {
+                tips.push('• Load time giving users time for a coffee break (aim for < 3s)');
             }
-            if (resourceCount > 50) {
-                tips.push('• Consider reducing number of resources');
+            
+            if (resourceCount > 100) {
+                tips.push('• Resource count higher than most people's IQ');
+            } else if (resourceCount > 50) {
+                tips.push('• Lots of resources - your page is having a house party');
             }
-            if (metrics.memory && metrics.memory.usedJSHeapSize > 20) {
-                tips.push('• Optimize memory usage');
+            
+            if (metrics.memory && metrics.memory.usedJSHeapSize > 50) {
+                tips.push('• Memory usage: your page is a digital hoarder');
+            } else if (metrics.memory && metrics.memory.usedJSHeapSize > 20) {
+                tips.push('• Memory usage could use some Marie Kondo magic');
             }
             
             if (tips.length > 0) {
                 html += `
                     <div class="mt-4 text-sm text-gray-400">
-                        <p class="mb-2 font-medium">Performance Tips:</p>
+                        <p class="mb-2 font-medium text-warning">Performance Reality Check:</p>
                         <ul class="space-y-1">
                             ${tips.join('<br>')}
                         </ul>
@@ -1873,10 +2111,10 @@
                 `;
             } else {
                 html += `
-                    <div class="mt-4 text-sm text-green-400">
+                    <div class="mt-4 text-sm text-success">
                         <p class="flex items-center gap-2">
                             <i class="fas fa-check-circle"></i>
-                            <span>Performance looks good!</span>
+                            <span>Speed demon! Users won't rage quit today.</span>
                         </p>
                     </div>
                 `;
@@ -1927,13 +2165,52 @@
                 </div>
             `;
             
-            // Issues
-            if (accessibility.issues && accessibility.issues.length > 0) {
+            // Add witty accessibility microcopy for common issues
+            const wittyIssues = [];
+            
+            if (images.withoutAlt > 0) {
+                if (images.withoutAlt > 50) {
+                    wittyIssues.push(`${images.withoutAlt} images missing alt text → AI sees nothing, users see... also nothing.`);
+                } else if (images.withoutAlt > 10) {
+                    wittyIssues.push(`${images.withoutAlt} images without alt text → mystery images for screen readers.`);
+                } else {
+                    wittyIssues.push(`${images.withoutAlt} images missing alt text → what are they hiding?`);
+                }
+            }
+            
+            if (links.empty > 0) {
+                if (links.empty > 5) {
+                    wittyIssues.push(`${links.empty} empty links → mystery buttons that go nowhere.`);
+                } else {
+                    wittyIssues.push(`${links.empty} empty links → broken promises in link form.`);
+                }
+            }
+            
+            if (!lang) {
+                wittyIssues.push('Page language not specified → Google assumes you speak alien.');
+            }
+            
+            // Check for form inputs without labels (if available in data)
+            const formsData = accessibility.heuristics?.forms || accessibility.forms;
+            if (formsData?.inputsWithoutLabels > 0) {
+                wittyIssues.push(`${formsData.inputsWithoutLabels} inputs without labels → guess the field, win a prize.`);
+            }
+            
+            // Add original issues with less humor for serious stuff
+            const otherIssues = accessibility.issues?.filter(issue => 
+                !issue.includes('alt') && 
+                !issue.includes('empty') && 
+                !issue.includes('language') &&
+                !issue.includes('label')
+            ) || [];
+            
+            if (wittyIssues.length > 0 || otherIssues.length > 0) {
                 html += `
                     <div class="test-result bg-yellow-900/20 rounded-lg p-4">
-                        <h3 class="font-semibold mb-3 text-yellow-400">Accessibility Issues</h3>
+                        <h3 class="font-semibold mb-3 text-yellow-400">Accessibility Reality Check</h3>
                         <ul class="space-y-1 text-sm text-gray-400">
-                            ${accessibility.issues.map(issue => `<li>• ${issue}</li>`).join('')}
+                            ${wittyIssues.map(issue => `<li>• ${issue}</li>`).join('')}
+                            ${otherIssues.map(issue => `<li>• ${issue}</li>`).join('')}
                         </ul>
                     </div>
                 `;
@@ -1942,7 +2219,7 @@
                     <div class="test-result bg-green-900/20 rounded-lg p-4">
                         <div class="flex items-center gap-2">
                             <i class="fas fa-check-circle status-good"></i>
-                            <span class="font-semibold text-green-400">No major accessibility issues found!</span>
+                            <span class="font-semibold text-green-400">Accessibility champion! Screen readers are happy.</span>
                         </div>
                     </div>
                 `;
@@ -1953,7 +2230,51 @@
         }
         
         function renderFilesResults(files) {
-            let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+            let html = '<div class="space-y-4">';
+            
+            // Add witty files microcopy section
+            const filesWittyIssues = [];
+            
+            // Robots.txt with humor  
+            if (files.robots?.exists) {
+                filesWittyIssues.push('• robots.txt ✓ → Politely telling bots where they can and cannot go.');
+            } else {
+                filesWittyIssues.push('• robots.txt ✗ → Wild west for web crawlers. Anything goes.');
+            }
+            
+            // Sitemap with humor
+            if (files.sitemap?.exists) {
+                filesWittyIssues.push('• sitemap.xml ✓ → A treasure map for search engines.');
+            } else {
+                filesWittyIssues.push('• sitemap.xml ✗ → Google playing hide-and-seek with your pages.');
+            }
+            
+            // RSS with humor
+            if (files.rss?.exists) {
+                filesWittyIssues.push('• RSS feed ✓ → Welcome back to 2009! (But hey, some people still use it.)');
+            } else {
+                filesWittyIssues.push('• RSS ✗ → Optional. Unless you really miss 2009.');
+            }
+            
+            // LLMS.txt with humor
+            if (files.llms?.exists) {
+                filesWittyIssues.push('• llms.txt ✓ → AI bots know exactly what they\'re allowed to train on.');
+            } else {
+                filesWittyIssues.push('• llms.txt ✗ → ChatGPT might be learning from your grocery list.');
+            }
+            
+            // Display witty files feedback
+            html += `
+                <div class="test-result bg-purple-900/20 rounded-lg p-4 border border-purple-500/30">
+                    <h3 class="font-semibold mb-3 text-purple-400">File Status Check</h3>
+                    <ul class="space-y-1 text-sm text-gray-300">
+                        ${filesWittyIssues.join('<br>')}
+                    </ul>
+                </div>
+            `;
+            
+            // Technical details grid
+            html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
             
             // Robots.txt
             html += `
@@ -2641,9 +2962,55 @@
         function renderAIResults(ai) {
             let html = '<div class="space-y-4">';
             
+            // Add witty AI microcopy section first
+            const aiWittyIssues = [];
+            
+            // AI Surfaces scoring commentary
+            const surfaces = window.currentResults?.tests?.aiSurfaces || ai.aiSurfacesReadiness;
+            if (surfaces) {
+                if (surfaces.overallScore >= 80) {
+                    aiWittyIssues.push('• AI Surfaces Score: Robots love your content more than humans do.');
+                } else if (surfaces.overallScore >= 60) {
+                    aiWittyIssues.push('• AI Surfaces Score: ChatGPT thinks you\'re okay. Room for improvement.');
+                } else {
+                    aiWittyIssues.push('• AI Surfaces Score: Even AI is confused by your content.');
+                }
+            }
+            
+            // Robots.txt commentary
+            if (ai.robots) {
+                const allowedBots = Object.values(ai.robots.allows || {}).filter(allowed => allowed).length;
+                const totalBots = Object.keys(ai.robots.allows || {}).length;
+                
+                if (allowedBots === totalBots && totalBots > 0) {
+                    aiWittyIssues.push('• robots.txt: Welcome mat for all AI crawlers. Very hospitable.');
+                } else if (allowedBots === 0) {
+                    aiWittyIssues.push('• robots.txt: Fort Knox level security. No robots allowed.');
+                } else {
+                    aiWittyIssues.push(`• robots.txt: Playing favorites - ${allowedBots}/${totalBots} bots allowed.`);
+                }
+            }
+            
+            // General AI commentary
+            aiWittyIssues.push('• AI Training: Your content might teach the next ChatGPT to be sarcastic.');
+            
+            // Display witty AI feedback
+            if (aiWittyIssues.length > 0) {
+                html += `
+                    <div class="test-result bg-indigo-900/20 rounded-lg p-4 border border-indigo-500/30">
+                        <h3 class="font-semibold mb-3 text-indigo-400">AI Attention Reality Check</h3>
+                        <ul class="space-y-1 text-sm text-gray-300">
+                            ${aiWittyIssues.join('<br>')}
+                        </ul>
+                        <div class="mt-3 text-xs text-gray-400">
+                            💡 Pro tip: AI bots are just very sophisticated readers. If humans can't understand your content, neither can they.
+                        </div>
+                    </div>
+                `;
+            }
+            
             // AI Surfaces Readiness Score (Flagship Feature)
             // Route the correct data from tests.aiSurfaces to this better layout
-            const surfaces = window.currentResults?.tests?.aiSurfaces || ai.aiSurfacesReadiness;
             if (surfaces) {
                 html += `
                 <div class="test-result bg-gradient-to-r from-indigo-900/30 to-purple-900/30 rounded-lg p-6 border border-indigo-500/20">
@@ -2800,49 +3167,111 @@
         function renderMultiBotResults(multiBot) {
             let html = '<div class="space-y-4">';
             
-            // Multi-Bot Analysis Header with Score
-            const overallScore = multiBot.impact?.overall?.score || multiBot.overallScore || 0;
-            const grade = multiBot.impact?.overall?.grade || (overallScore >= 90 ? 'A+' : overallScore >= 80 ? 'A' : overallScore >= 70 ? 'B' : overallScore >= 60 ? 'C' : overallScore >= 50 ? 'D' : 'F');
-            const scoreColor = overallScore >= 80 ? 'text-green-400' : overallScore >= 60 ? 'text-yellow-400' : 'text-red-400';
+            // Simplified to just the "Big 5" bots with witty labels
+            const bigFiveBots = {
+                'GoogleBot': { 
+                    name: 'GoogleBot', 
+                    wittyLabel: 'The Search Overlord',
+                    description: 'Decides if you exist or not',
+                    icon: '🔍',
+                    color: 'text-blue-400 bg-blue-900/20'
+                },
+                'ChatGPT-User': { 
+                    name: 'OpenAI', 
+                    wittyLabel: 'The Know-It-All',
+                    description: 'Training on your content since 2021',
+                    icon: '🤖',
+                    color: 'text-green-400 bg-green-900/20'
+                },
+                'Claude-Web': { 
+                    name: 'Claude', 
+                    wittyLabel: 'The Polite One',
+                    description: 'Actually says please and thank you',
+                    icon: '🎭',
+                    color: 'text-purple-400 bg-purple-900/20'
+                },
+                'BingBot': { 
+                    name: 'Bing', 
+                    wittyLabel: 'The Underdog',
+                    description: 'Tries really hard to be relevant',
+                    icon: '🔎',
+                    color: 'text-orange-400 bg-orange-900/20'
+                },
+                'PerplexityBot': { 
+                    name: 'Perplexity', 
+                    wittyLabel: 'The Summarizer',
+                    description: 'Turns your content into citations',
+                    icon: '📚',
+                    color: 'text-cyan-400 bg-cyan-900/20'
+                }
+            };
             
             html += `
-                <div class="test-result bg-gradient-to-r from-cyan-900/30 to-blue-900/30 rounded-lg p-6 border border-cyan-500/20">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-xl font-bold text-cyan-300 flex items-center gap-2">
-                            <i class="fas fa-robot"></i>
-                            Multi-Bot Access Analysis
-                        </h3>
-                        <div class="text-right">
-                            <div class="text-3xl font-bold ${scoreColor}">${overallScore}</div>
-                            <div class="text-lg font-semibold ${scoreColor}">Grade ${grade}</div>
-                        </div>
+                <div class="test-result bg-gradient-to-r from-cyan-900/20 to-purple-900/20 rounded-lg p-6">
+                    <h3 class="text-xl font-bold text-cyan-300 mb-4 flex items-center gap-2">
+                        <i class="fas fa-users"></i>
+                        The Big 5: Who's Accessing Your Content
+                    </h3>
+                    <div class="text-sm text-gray-400 mb-6">
+                        These are the bots that actually matter. Everyone else is just noise.
                     </div>
             `;
             
-            // Summary Statistics
-            if (multiBot.summary) {
-                const summary = multiBot.summary;
+            // Create grid of the Big 5
+            html += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">';
+            
+            Object.values(bigFiveBots).forEach(bot => {
+                // Check if this bot is actually in the data
+                const botData = multiBot.bots?.find(b => 
+                    b.name.toLowerCase().includes(bot.name.toLowerCase()) ||
+                    b.userAgent.toLowerCase().includes(bot.name.toLowerCase())
+                );
+                
+                const status = botData ? (botData.allowed ? 'Allowed' : 'Blocked') : 'Unknown';
+                const statusColor = botData ? (botData.allowed ? 'text-green-400' : 'text-red-400') : 'text-gray-500';
+                
                 html += `
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                        <div class="text-center p-3 bg-gray-800/50 rounded">
-                            <div class="text-2xl font-bold text-cyan-400">${summary.totalBots}</div>
-                            <div class="text-xs text-gray-400">Total Bots</div>
+                    <div class="${bot.color} rounded-lg p-4 border border-opacity-30">
+                        <div class="flex items-center gap-3 mb-2">
+                            <div class="text-2xl">${bot.icon}</div>
+                            <div>
+                                <div class="font-semibold">${bot.name}</div>
+                                <div class="text-xs opacity-75">${bot.wittyLabel}</div>
+                            </div>
                         </div>
-                        <div class="text-center p-3 bg-gray-800/50 rounded">
-                            <div class="text-2xl font-bold text-green-400">${summary.allowed}</div>
-                            <div class="text-xs text-gray-400">Allowed</div>
-                        </div>
-                        <div class="text-center p-3 bg-gray-800/50 rounded">
-                            <div class="text-2xl font-bold text-red-400">${summary.blocked}</div>
-                            <div class="text-xs text-gray-400">Blocked</div>
-                        </div>
-                        <div class="text-center p-3 bg-gray-800/50 rounded">
-                            <div class="text-2xl font-bold text-yellow-400">${summary.conflicts}</div>
-                            <div class="text-xs text-gray-400">Conflicts</div>
+                        <div class="text-xs text-gray-300 mb-2">${bot.description}</div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-medium ${statusColor}">${status}</span>
+                            ${botData ? `<div class="text-xs text-gray-400">Last seen: Recently</div>` : ''}
                         </div>
                     </div>
                 `;
-            }
+            });
+            
+            html += '</div>';
+            
+            // Add witty summary
+            const allowedCount = Object.values(bigFiveBots).filter(bot => {
+                const botData = multiBot.bots?.find(b => 
+                    b.name.toLowerCase().includes(bot.name.toLowerCase()) ||
+                    b.userAgent.toLowerCase().includes(bot.name.toLowerCase())
+                );
+                return botData?.allowed;
+            }).length;
+            
+            html += `
+                <div class="mt-4 p-4 bg-gray-800/30 rounded-lg">
+                    <div class="text-sm text-gray-300">
+                        <strong>Reality Check:</strong> ${allowedCount}/5 of the important bots can access your content. 
+                        ${allowedCount === 5 ? 'You\'re the popular kid at the robot lunch table! 🎉' : 
+                          allowedCount >= 3 ? 'Decent bot street cred. Could be better. 📈' : 
+                          allowedCount >= 1 ? 'Some bots like you. Others... not so much. 🤷‍♂️' : 
+                          'Congratulations, you\'ve achieved digital invisibility! 👻'}
+                    </div>
+                </div>
+            `;
+            
+            html += '</div>';
             
             // Bot Type Breakdown
             if (multiBot.summary?.byType) {

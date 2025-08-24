@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- SEO Audit Tool - Production Deployment Test -->
+    <!-- Updated: Testing Cloudflare Pages deployment with all secrets configured -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Attention is all you need - Simple SEO & Technical Audit</title>
@@ -789,7 +791,7 @@
     <script>
         // Use Cloud Run backend for production, localhost for development
         const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-            ? 'http://localhost:3001'  // Local development
+            ? 'http://localhost:8080'  // Local development
             : 'https://seo-audit-backend-458683085682.us-central1.run.app';  // Optimized Cloud Run backend
         let currentResults = null;
         let components = null;
@@ -2089,7 +2091,7 @@
             }
             
             if (resourceCount > 100) {
-                tips.push('• Resource count higher than most people's IQ');
+                tips.push('• Resource count higher than most people\'s IQ');
             } else if (resourceCount > 50) {
                 tips.push('• Lots of resources - your page is having a house party');
             }

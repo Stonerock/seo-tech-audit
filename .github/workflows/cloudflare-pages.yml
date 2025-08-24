@@ -41,14 +41,41 @@ jobs:
       - name: Install Wrangler CLI
         run: npm install -g wrangler
         
+      - name: Install dependencies for Tailwind build
+        run: npm install
+        
+      - name: Build Tailwind CSS for production
+        run: |
+          if [ -f "tailwind.config.js" ]; then
+            npx tailwindcss -i ./index.html -o ./styles.css --minify
+            echo "✓ Tailwind CSS built for production"
+          else
+            echo "No Tailwind config found, skipping CSS build"
+          fi
+        
       - name: Create build directory
         run: mkdir -p dist
         
       - name: Copy frontend files
         run: |
           cp index.html dist/
-          [ -d components ] && cp -r components/ dist/ || echo "No components directory"
-          [ -d assets ] && cp -r assets/ dist/ || echo "No assets directory"
+          
+          # Ensure components directory is copied (required for AttentionComponents)
+          if [ -d "components" ]; then
+            cp -r components/ dist/
+            echo "✓ Components directory copied"
+          else
+            echo "⚠️  ERROR: components/ directory not found - this will cause MIME type errors"
+            exit 1
+          fi
+          
+          # Copy assets if they exist
+          if [ -d "assets" ]; then
+            cp -r assets/ dist/
+            echo "✓ Assets directory copied"
+          else
+            echo "No assets directory (optional)"
+          fi
           
       - name: Configure backend URL
         env:
@@ -56,7 +83,9 @@ jobs:
         run: |
           if [ "$BACKEND_URL" != "https://seo-audit-backend-YOUR_PROJECT_ID.a.run.app" ]; then
             sed -i "s|http://localhost:3001|$BACKEND_URL|g" dist/index.html
+            sed -i "s|http://localhost:8080|$BACKEND_URL|g" dist/index.html
             sed -i "s|http://127.0.0.1:3001|$BACKEND_URL|g" dist/index.html
+            sed -i "s|http://127.0.0.1:8080|$BACKEND_URL|g" dist/index.html
             echo "✅ Updated API endpoints to: $BACKEND_URL"
           else
             echo "⚠️ Using placeholder backend URL"

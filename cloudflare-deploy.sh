@@ -44,10 +44,36 @@ mkdir -p $BUILD_DIR
 # Prepare frontend for deployment
 echo -e "${YELLOW}📦 Preparing frontend build...${NC}"
 
+# Install dependencies if package.json exists and node_modules is missing
+if [ -f "package.json" ] && [ ! -d "node_modules" ]; then
+    echo -e "${YELLOW}📋 Installing dependencies...${NC}"
+    npm install
+fi
+
+# Build Tailwind CSS for production (if config exists)
+if [ -f "tailwind.config.js" ]; then
+    echo -e "${YELLOW}🎨 Building Tailwind CSS for production...${NC}"
+    npx tailwindcss -i ./index.html -o ./dist/styles.css --minify
+fi
+
 # Copy main files to build directory
 cp index.html $BUILD_DIR/
-cp -r components/ $BUILD_DIR/components/ 2>/dev/null || echo "No components directory"
-cp -r assets/ $BUILD_DIR/assets/ 2>/dev/null || echo "No assets directory"
+
+# Copy components directory (required for AttentionComponents)
+if [ -d "components" ]; then
+    cp -r components/ $BUILD_DIR/
+    echo "✓ Components directory copied"
+else
+    echo "⚠️  Warning: components/ directory not found"
+fi
+
+# Copy assets directory if it exists
+if [ -d "assets" ]; then
+    cp -r assets/ $BUILD_DIR/
+    echo "✓ Assets directory copied"
+else
+    echo "No assets directory found (optional)"
+fi
 
 # Update API endpoints to point to Cloud Run backend
 echo -e "${YELLOW}🔗 Configuring backend endpoints...${NC}"
