@@ -24,6 +24,11 @@ on:
         description: 'Backend URL to use for API calls'
         required: false
         default: 'https://seo-audit-backend-YOUR_PROJECT_ID.a.run.app'
+      force_deploy:
+        description: 'Force deployment (bypass tests)'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   deploy:
