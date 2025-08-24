@@ -92,7 +92,6 @@ jobs:
           --min-instances=0
           --max-instances=10
           --allow-unauthenticated
-          --set-env-vars=NODE_ENV=production
           --timeout=300
         env_vars: |
           NODE_ENV=production
