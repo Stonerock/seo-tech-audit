@@ -11,6 +11,12 @@ on:
       - 'assets/**'
       - 'wrangler.toml'
       - '.github/workflows/cloudflare-pages.yml'
+      - 'src/**'
+      - 'dist/**'
+      - '_headers'
+      - 'tailwind.config.js'
+      - 'postcss.config.js'
+      - 'package.json'
   pull_request:
     branches: [main, master]
     paths:
@@ -18,6 +24,12 @@ on:
       - 'components/**'
       - 'assets/**'
       - 'wrangler.toml'
+      - 'src/**'
+      - 'dist/**'
+      - '_headers'
+      - 'tailwind.config.js'
+      - 'postcss.config.js'
+      - 'package.json'
   workflow_dispatch:
     inputs:
       backend_url:
@@ -58,38 +70,10 @@ jobs:
       - name: Install Wrangler CLI
         run: npm install -g wrangler
         
-      - name: Build Tailwind CSS for production
+      - name: Build production assets
         run: |
-          if [ -f "tailwind.config.js" ]; then
-            npx tailwindcss -i ./index.html -o ./styles.css --minify
-            echo "✓ Tailwind CSS built for production"
-          else
-            echo "No Tailwind config found, skipping CSS build"
-          fi
-        
-      - name: Create build directory
-        run: mkdir -p dist
-        
-      - name: Copy frontend files
-        run: |
-          cp index.html dist/
-          
-          # Ensure components directory is copied (required for AttentionComponents)
-          if [ -d "components" ]; then
-            cp -r components/ dist/
-            echo "✓ Components directory copied"
-          else
-            echo "⚠️  ERROR: components/ directory not found - this will cause MIME type errors"
-            exit 1
-          fi
-          
-          # Copy assets if they exist
-          if [ -d "assets" ]; then
-            cp -r assets/ dist/
-            echo "✓ Assets directory copied"
-          else
-            echo "No assets directory (optional)"
-          fi
+          npm run build:prod
+          echo "✓ Production assets built"
           
       - name: Configure backend URL
         env:
