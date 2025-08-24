@@ -45,17 +45,18 @@ jobs:
           node-version: '18'
           cache: 'npm'
           
-      - name: Install Wrangler CLI
-        run: npm install -g wrangler
+      - name: Install dependencies
+        run: npm ci
         
       - name: Run tests
+        if: ${{ github.event.inputs.force_deploy != 'true' }}
         run: npm test
         env:
           NODE_ENV: test
         continue-on-error: false
         
-      - name: Install dependencies for frontend build
-        run: npm install
+      - name: Install Wrangler CLI
+        run: npm install -g wrangler
         
       - name: Build Tailwind CSS for production
         run: |
