@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attention is all you need | SEO Audit Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'profound-blue': '#0066FF',
+                        'profound-dark': '#0D1117',
+                        'profound-gray': '#21262D',
+                        'profound-light': '#F6F8FA',
+                        'profound-border': '#30363D',
+                        'success': '#2EA043',
+                        'warning': '#FB8500',
+                        'danger': '#F85149'
+                    },
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
+                        'mono': ['JetBrains Mono', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .metric-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.04);
+        }
+        
+        .score-circle {
+            position: relative;
+            width: 80px;
+            height: 80px;
+        }
+        
+        .score-circle svg {
+            transform: rotate(-90deg);
+            width: 100%;
+            height: 100%;
+        }
+        
+        .score-circle .progress {
+            fill: none;
+            stroke-width: 6;
+            stroke-linecap: round;
+            transition: stroke-dasharray 1.5s ease-in-out;
+        }
+        
+        .score-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-weight: 700;
+            font-size: 16px;
+        }
+        
+        .executive-summary {
+            background: linear-gradient(135deg, #0066FF08 0%, #2EA04308 100%);
+            border-left: 3px solid #0066FF;
+        }
+        
+        .business-impact {
+            background: linear-gradient(135deg, #2EA04308 0%, #FB850008 100%);
+            border-left: 3px solid #2EA043;
+        }
+        
+        .collapsible {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .collapsible.expanded {
+            max-height: 2000px;
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-good { background-color: #2EA043; }
+        .status-warning { background-color: #FB8500; }
+        .status-danger { background-color: #F85149; }
+    </style>
+</head>
+<body class="bg-profound-dark text-white font-sans antialiased">
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 glass-card">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 bg-profound-blue rounded-lg flex items-center justify-center">
+                        <i class="fas fa-robot text-white text-sm"></i>
+                    </div>
+                    <span class="font-bold text-lg">Attention Analytics</span>
+                </div>
+                <button class="bg-profound-blue text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium">
+                    Run Analysis
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="pt-32 pb-20 px-6">
+        <div class="container mx-auto max-w-6xl">
+            <!-- Hero Header -->
+            <div class="text-center mb-16">
+                <h1 class="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+                    Win attention with clarity<span class="text-profound-blue">.</span>
+                </h1>
+                <p class="text-xl md:text-2xl text-gray-300 mb-6 font-light">
+                    One focused audit for people, search, and AI.
+                </p>
+                <p class="text-lg text-gray-400 max-w-4xl mx-auto leading-relaxed mb-12">
+                    We surface what matters: structure, speed, signals, and how easily your content can be understood and cited. No noise. No 70‑page PDFs.
+                </p>
+                
+                <div class="space-y-4">
+                    <button class="bg-profound-blue text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-blue-600 transition-colors">
+                        Run a free audit
+                    </button>
+                    <p class="text-sm text-gray-500">
+                        ~30 seconds per page. Clear, actionable output.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Executive Summary Dashboard -->
+            <div class="executive-summary rounded-2xl p-8 mb-16">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-2xl font-bold mb-2">Overview</h2>
+                        <p class="text-gray-400">Snapshot of where you stand</p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-4xl font-bold text-profound-blue">78</div>
+                        <div class="text-sm text-gray-400">Overall Score</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- User Attention -->
+                    <div class="glass-card metric-card rounded-xl p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="font-semibold text-gray-200">Performance</h3>
+                                <p class="text-sm text-gray-500">Speed & accessibility</p>
+                            </div>
+                            <div class="score-circle" data-score="87">
+                                <svg viewBox="0 0 80 80">
+                                    <circle cx="40" cy="40" r="34" fill="none" stroke="#30363D" stroke-width="6"></circle>
+                                    <circle class="progress" cx="40" cy="40" r="34" stroke="#2EA043" stroke-dasharray="0 213.6"></circle>
+                                </svg>
+                                <div class="score-text text-success">87</div>
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-500 flex items-center gap-2">
+                            <span class="status-indicator status-good"></span>
+                            <span>If people leave, robots don’t matter.</span>
+                        </div>
+                    </div>
+
+                    <!-- Google Attention -->
+                    <div class="glass-card metric-card rounded-xl p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="font-semibold text-gray-200">Search</h3>
+                                <p class="text-sm text-gray-500">Indexing & metadata</p>
+                            </div>
+                            <div class="score-circle" data-score="100">
+                                <svg viewBox="0 0 80 80">
+                                    <circle cx="40" cy="40" r="34" fill="none" stroke="#30363D" stroke-width="6"></circle>
+                                    <circle class="progress" cx="40" cy="40" r="34" stroke="#2EA043" stroke-dasharray="0 213.6"></circle>
+                                </svg>
+                                <div class="score-text text-success">100</div>
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-500 flex items-center gap-2">
+                            <span class="status-indicator status-good"></span>
+                            <span>Google isn’t psychic. Tell it who you are.</span>
+                        </div>
+                    </div>
+
+                    <!-- AI Attention -->
+                    <div class="glass-card metric-card rounded-xl p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="font-semibold text-gray-200">AI Readiness</h3>
+                                <p class="text-sm text-gray-500">Citations & overviews</p>
+                            </div>
+                            <div class="score-circle" data-score="65">
+                                <svg viewBox="0 0 80 80">
+                                    <circle cx="40" cy="40" r="34" fill="none" stroke="#30363D" stroke-width="6"></circle>
+                                    <circle class="progress" cx="40" cy="40" r="34" stroke="#FB8500" stroke-dasharray="0 213.6"></circle>
+                                </svg>
+                                <div class="score-text text-warning">65</div>
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-500 flex items-center gap-2">
+                            <span class="status-indicator status-warning"></span>
+                            <span>Robots don’t read between the lines.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Key Insights -->
+                <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="business-impact rounded-xl p-6">
+                        <h3 class="font-semibold text-success mb-3 flex items-center"><i class="fas fa-chart-line mr-2"></i>Impact</h3>
+                        <ul class="space-y-2 text-sm text-gray-300">
+                            <li>+12% user retention potential</li>
+                            <li>3× higher snippet inclusion odds</li>
+                            <li>Ahead of 95% of comparable sites</li>
+                        </ul>
+                    </div>
+                    <div class="glass-card rounded-xl p-6">
+                        <h3 class="font-semibold text-profound-blue mb-3 flex items-center"><i class="fas fa-code mr-2"></i>Quick Wins</h3>
+                        <ul class="space-y-2 text-sm text-gray-300">
+                            <li title="AI sees nothing, users see… also nothing.">74 images missing alt text (2–3 h)</li>
+                            <li title="AI loves structured answers.">Add FAQ schema (4–6 h)</li>
+                            <li title="Guide AI crawlers to the right sources.">Create llms.txt (1 h)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-20 px-6 bg-profound-gray">
+        <div class="container mx-auto max-w-4xl text-center">
+            <h2 class="text-3xl md:text-4xl font-bold mb-6">
+                See how your site performs — for users, search, and AI
+            </h2>
+            <p class="text-lg text-gray-400 mb-8">
+                Other audit tools obsess over Core Web Vitals or throw you a 70-page PDF nobody reads.
+                <strong class="text-white"> We give you the only thing that matters: attention.</strong>
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-success/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-users text-success text-2xl"></i>
+                    </div>
+                    <h3 class="font-bold text-success mb-2">Performance</h3>
+                    <p class="text-gray-400 text-sm">speed & accessibility</p>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-profound-blue/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <i class="fab fa-google text-profound-blue text-2xl"></i>
+                    </div>
+                    <h3 class="font-bold text-profound-blue mb-2">Search</h3>
+                    <p class="text-gray-400 text-sm">indexing & metadata</p>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-warning/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-robot text-warning text-2xl"></i>
+                    </div>
+                    <h3 class="font-bold text-warning mb-2">AI Readiness</h3>
+                    <p class="text-gray-400 text-sm">readiness for Overviews, citations, and bots that now write half the internet</p>
+                </div>
+            </div>
+
+            <button class="bg-profound-blue text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-blue-600 transition-colors">
+                Check my site
+            </button>
+        </div>
+    </section>
+
+    <!-- Action Plan Section -->
+    <section class="py-20 px-6">
+        <div class="container mx-auto max-w-4xl">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold mb-6">
+                    Fix what matters. Ignore the noise.
+                </h2>
+                <p class="text-lg text-gray-400 mb-8">
+                    Instead of a 40-page audit, we hand you your Top 3 Attention Fixes.<br>
+                    It's simple enough for clients, detailed enough for devs.
+                </p>
+            </div>
+
+            <div class="space-y-6 mb-12">
+                <!-- Fix 1 -->
+                <div class="glass-card rounded-2xl p-8 border border-profound-blue/20">
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-12 h-12 bg-profound-blue text-white rounded-full flex items-center justify-center font-bold text-xl">1</div>
+                        <div>
+                            <h3 class="text-2xl font-bold">Add alt text to 74 images</h3>
+                            <p class="text-gray-400">Make content accessible and machine-readable.</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm bg-profound-gray/50 rounded-lg p-4">
+                        <div><strong class="text-success">Impact:</strong> +12% accessibility, better retention</div>
+                        <div><strong class="text-profound-blue">AI Benefit:</strong> Images become quotable</div>
+                        <div><strong class="text-warning">Effort:</strong> 2-3 hours, bulk edit possible</div>
+                    </div>
+                </div>
+
+                <!-- Fix 2 -->
+                <div class="glass-card rounded-2xl p-8 border border-profound-blue/20">
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-12 h-12 bg-profound-blue text-white rounded-full flex items-center justify-center font-bold text-xl">2</div>
+                        <div>
+                            <h3 class="text-2xl font-bold">Add FAQ schema</h3>
+                            <p class="text-gray-400">Structured answers increase clarity and discoverability.</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm bg-profound-gray/50 rounded-lg p-4">
+                        <div><strong class="text-success">Impact:</strong> 3x more snippet inclusion</div>
+                        <div><strong class="text-profound-blue">AI Benefit:</strong> Direct voice search answers</div>
+                        <div><strong class="text-warning">Effort:</strong> 4-6 hours, content strategy needed</div>
+                    </div>
+                </div>
+
+                <!-- Fix 3 -->
+                <div class="glass-card rounded-2xl p-8 border border-profound-blue/20">
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-12 h-12 bg-profound-blue text-white rounded-full flex items-center justify-center font-bold text-xl">3</div>
+                        <div>
+                            <h3 class="text-2xl font-bold">Create llms.txt</h3>
+                            <p class="text-gray-400">Guide AI crawlers to the right sources.</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm bg-profound-gray/50 rounded-lg p-4">
+                        <div><strong class="text-success">Impact:</strong> Ahead of 95% of sites</div>
+                        <div><strong class="text-profound-blue">AI Benefit:</strong> Better crawler understanding</div>
+                        <div><strong class="text-warning">Effort:</strong> 1 hour, one-time setup</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button class="bg-profound-blue text-white px-10 py-4 rounded-xl font-bold text-xl hover:bg-blue-600 transition-colors mb-4">
+                    Download the playbook
+                </button>
+                <p class="text-sm text-gray-500">Free. No email required.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="py-20 px-6 bg-gradient-to-r from-profound-blue/10 to-success/10 border-t border-profound-border">
+        <div class="container mx-auto max-w-4xl text-center">
+            <h2 class="text-3xl md:text-5xl font-bold mb-8">
+                Ready to turn findings into results?
+            </h2>
+            <p class="text-xl text-gray-300 mb-12 leading-relaxed">
+                We built this tool to show you where your site is bleeding eyeballs and citations.<br>
+                Want us to actually fix it? That's what our agency does.
+            </p>
+            <div class="space-y-6">
+                <button class="bg-white text-black px-10 py-4 rounded-xl font-bold text-xl hover:bg-gray-100 transition-colors">
+                    <i class="fas fa-calendar mr-2"></i>Book a strategy call
+                </button>
+                <p class="text-sm text-gray-400">Speak with a specialist, not a bot.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-12 px-6 bg-profound-dark border-t border-profound-border">
+        <div class="container mx-auto text-center">
+            <p class="text-gray-400 text-lg">
+                Built for agencies and developers who need more than just another SEO report.
+            </p>
+            <p class="text-gray-500 mt-4 text-sm">
+                Because attention is all you need... but you'll also need proper implementation.
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Collapsible sections functionality would go here
+        function toggleSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.classList.toggle('expanded');
+            }
+        }
+
+        // Initialize on load
+        window.addEventListener('load', function() {
+            // Add any initialization code here
+            console.log('Attention Analytics loaded');
+            // IntersectionObserver for score animations
+            const circles = document.querySelectorAll('.score-circle');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const el = entry.target;
+                        const score = parseInt(el.getAttribute('data-score') || '0', 10);
+                        const circumference = 2 * Math.PI * 34; // r=34
+                        const dash = Math.max(0, Math.min(100, score)) / 100 * circumference;
+                        const progress = el.querySelector('.progress');
+                        if (progress) {
+                            progress.style.strokeDasharray = `${dash} ${circumference}`;
+                        }
+                        observer.unobserve(el);
+                    }
+                });
+            }, { threshold: 0.4 });
+            circles.forEach(c => observer.observe(c));
+        });
+    </script>
+
+</body>
+</html>

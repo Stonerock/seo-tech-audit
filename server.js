@@ -1,2249 +1,299 @@
-// server.js - SEO Audit Backend Server
-// Tallenna tämä tiedosto nimellä: server.js
+// server.optimized.js - Fast-starting SEO Audit Backend
+// Optimized for cloud deployment with lazy loading
 
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const puppeteer = require('puppeteer');
-const cheerio = require('cheerio');
-const fetch = require('node-fetch');
-const xml2js = require('xml2js');
-const path = require('path');
-const axeCore = require('axe-core');
-const lighthouse = require('lighthouse');
-const chromeLauncher = require('chrome-launcher');
 const rateLimit = require('express-rate-limit');
 
+// Basic logging without heavy winston dependencies
+const log = {
+    info: (msg, ...args) => console.log(`[INFO] ${msg}`, ...args),
+    warn: (msg, ...args) => console.warn(`[WARN] ${msg}`, ...args),
+    error: (msg, ...args) => console.error(`[ERROR] ${msg}`, ...args)
+};
+
+// Initialize Express app
 const app = express();
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
+const PORT = process.env.PORT || 8080;
 
+// Basic middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static frontend (index.html, etc.) from project root
-app.use(express.static(__dirname));
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+// Serve static files
+app.use(express.static('.', {
+    index: false // Don't automatically serve index.html for all routes
+}));
+
+// Request logging middleware
+app.use((req, res, next) => {
+    log.info(`${req.method} ${req.path} - ${req.ip}`);
+    next();
 });
 
-// Cache välttääksemme turhia pyyntöjä
-const cache = new Map();
-
-// Helper: Fetch with timeout
-async function fetchWithTimeout(url, timeout = 5000) {
-  // Support Node 16 where global AbortController may be missing
-  let AbortControllerImpl = global.AbortController;
-  try {
-    if (!AbortControllerImpl) {
-      AbortControllerImpl = require('abort-controller');
-    }
-  } catch (_) {
-    AbortControllerImpl = null;
-  }
-
-  const controller = AbortControllerImpl ? new AbortControllerImpl() : null;
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  
-  try {
-    const response = await fetch(url, { 
-      signal: controller ? controller.signal : undefined,
-      headers: {
-        'User-Agent': 'SEO-Audit-Tool/1.0'
-      }
-    });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    throw error;
-  }
-}
-
-// Helper: Inspect response headers for CDN/cache hints
-async function getHeadersInfo(url) {
-  try {
-    const response = await fetchWithTimeout(url, 8000);
-    const headers = response.headers;
-    const headerObj = {};
-    headers.forEach((value, key) => { headerObj[key.toLowerCase()] = value; });
-
-    function detectCdn(h) {
-      const headerString = JSON.stringify(h).toLowerCase();
-      if (h['cf-ray'] || h['cf-cache-status'] || headerString.includes('cloudflare')) return 'Cloudflare';
-      if (h['x-amz-cf-pop'] || h['x-cache']?.includes('cloudfront')) return 'AWS CloudFront';
-      if (h['x-vercel-id']) return 'Vercel';
-      if (h['x-fastly-request-id'] || headerString.includes('fastly')) return 'Fastly';
-      if (h['akamai-grn'] || headerString.includes('akamai')) return 'Akamai';
-      if (h['server']?.toLowerCase().includes('varnish')) return 'Varnish (possible Fastly)';
-      return null;
-    }
-
-    const cdn = detectCdn(headerObj);
-    const cacheStatus = headerObj['x-cache'] || headerObj['cf-cache-status'] || headerObj['x-cache-status'] || null;
-    return {
-      status: response.status,
-      cdn,
-      cacheStatus,
-      server: headerObj['server'] || null,
-      via: headerObj['via'] || null,
-      headers: headerObj
-    };
-  } catch (error) {
-    return { error: error.message };
-  }
-}
-
-// Optional: Google PageSpeed Insights API
-async function runPageSpeedInsights(url) {
-  const apiKey = process.env.PSI_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const endpoint = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&key=${apiKey}&strategy=mobile`;
-    const r = await fetchWithTimeout(endpoint, 30000);
-    if (!r.ok) throw new Error(`PSI HTTP ${r.status}`);
-    const data = await r.json();
-    const lighthouse = data.lighthouseResult || {};
-    return {
-      score: lighthouse.categories ? lighthouse.categories.performance?.score : null,
-      lcp: lighthouse.audits?.['largest-contentful-paint']?.numericValue || null,
-      fcp: lighthouse.audits?.['first-contentful-paint']?.numericValue || null,
-      tbt: lighthouse.audits?.['total-blocking-time']?.numericValue || null,
-      cls: lighthouse.audits?.['cumulative-layout-shift']?.numericValue || null,
-      link: `https://pagespeed.web.dev/report?url=${encodeURIComponent(url)}`
-    };
-  } catch (error) {
-    return { error: error.message };
-  }
-}
-
-// Optional: WebPageTest trigger (returns URLs to view results)
-async function runWebPageTest(url) {
-  const apiKey = process.env.WPT_API_KEY;
-  if (!apiKey) return null;
-  const location = process.env.WPT_LOCATION || 'eu-west-1';
-  try {
-    const endpoint = `https://www.webpagetest.org/runtest.php?url=${encodeURIComponent(url)}&k=${apiKey}&location=${encodeURIComponent(location)}&f=json`;
-    const r = await fetchWithTimeout(endpoint, 15000);
-    if (!r.ok) throw new Error(`WPT HTTP ${r.status}`);
-    const data = await r.json();
-    const testId = data?.data?.testId || null;
-    const userUrl = data?.data?.userUrl || null;
-    const jsonUrl = data?.data?.jsonUrl || null;
-    return { testId, userUrl, jsonUrl };
-  } catch (error) {
-    return { error: error.message };
-  }
-}
-
-// Poll WebPageTest result JSON and extract key metrics (if jsonUrl provided)
-async function pollWebPageTest(jsonUrl) {
-  if (!jsonUrl) return null;
-  try {
-    for (let i = 0; i < 10; i++) {
-      const r = await fetchWithTimeout(jsonUrl, 10000);
-      if (!r.ok) throw new Error(`WPT poll HTTP ${r.status}`);
-      const data = await r.json();
-      const status = data?.statusText || '';
-      if (/complete|finished/i.test(status)) {
-        const run = data?.data?.runs?.[1]?.firstView || data?.data?.median?.firstView || null;
-        if (!run) return { status };
-        return {
-          status,
-          ttfb: run.TTFB || null,
-          fcp: run.firstContentfulPaint || run['firstContentfulPaint'] || null,
-          lcp: run['chromeUserTiming.LargestContentfulPaint'] || null,
-          loadTime: run.loadTime || null,
-          location: data?.data?.location || null,
-          summary: data?.data?.summary || null
-        };
-      }
-      await new Promise(r => setTimeout(r, 3000));
-    }
-    return { status: 'timeout' };
-  } catch (e) {
-    return { error: e.message };
-  }
-}
-
-// Pääreitti: Analysoi sivusto
-const auditLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
-
-app.post('/api/audit', auditLimiter, async (req, res) => {
-  const { url, lighthouse: lhFlag } = req.body || {};
-  
-  if (!url) {
-    return res.status(400).json({ error: 'URL vaaditaan' });
-  }
-  // Basic URL validation
-  try {
-    const u = new URL(url);
-    if (!['http:', 'https:'].includes(u.protocol)) {
-      return res.status(400).json({ error: 'Virheellinen URL-protokolla' });
-    }
-  } catch (_) {
-    return res.status(400).json({ error: 'Virheellinen URL' });
-  }
-  
-  // Tarkista cache
-  if (cache.has(url)) {
-    const cached = cache.get(url);
-    if (Date.now() - cached.timestamp < 300000) { // 5 min cache
-      console.log(`📦 Returning cached results for ${url}`);
-      return res.json(cached.data);
-    }
-  }
-  
-  console.log(`🔍 Starting audit for ${url}`);
-  
-  let browser;
-  try {
-    const results = {
-      url,
-      timestamp: new Date().toISOString(),
-      tests: {}
-    };
-    
-    // 1. Käynnistä Puppeteer
-    console.log('🚀 Launching Puppeteer...');
-    browser = await puppeteer.launch({ 
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    
-    const page = await browser.newPage();
-    await page.setUserAgent('SEO-Audit-Tool/1.0 (Compatible)');
-    
-    // Lataa sivu
-    console.log('📄 Loading page...');
-    const response = await page.goto(url, { 
-      waitUntil: 'networkidle2',
-      timeout: 30000 
-    });
-    
-    const html = await page.content();
-    const $ = cheerio.load(html);
-    
-    // 2. Schema.org testit
-    console.log('🔍 Testing Schema.org...');
-    results.tests.schema = await testSchema($, page);
-    try {
-      const schemaIssues = validateSchemaRequired(results.tests.schema.schemas || []);
-      if (schemaIssues.length) {
-        results.tests.schema.requiredIssues = schemaIssues;
-      }
-    } catch (_) {}
-    
-    // 3. JSON-LD
-    console.log('🔍 Testing JSON-LD...');
-    results.tests.jsonld = await testJsonLD($);
-    
-    // 4. Metadata
-    console.log('🔍 Testing Metadata...');
-    results.tests.metadata = await testMetadata($);
-    
-    // 5. Performance metrics (Puppeteer)
-    console.log('⚡ Testing Performance...');
-    results.tests.performance = await testPerformance(page);
-    
-    // 6. Accessibility (axe-core + heuristics)
-    console.log('♿ Testing Accessibility...');
-    results.tests.accessibility = await testAccessibility(page);
-    
-    // 7. SEO basics
-    console.log('🎯 Testing SEO Basics...');
-    results.tests.seo = await testSEOBasics($, url);
-    
-    // 8. External files
-    console.log('📁 Testing External Files...');
-    results.tests.files = await testExternalFiles(url);
-
-    // 9. Headers & CDN heuristics
-    console.log('🌐 Inspecting headers...');
-    results.tests.headers = await getHeadersInfo(url);
-
-    // 10. External performance hooks (optional)
-    console.log('🧪 External performance hooks...');
-    const [psi, wpt] = await Promise.all([
-      runPageSpeedInsights(url),
-      runWebPageTest(url)
-    ]);
-    results.tests.external = {};
-    if (psi) results.tests.external.psi = psi;
-    if (wpt) {
-      results.tests.external.wpt = wpt;
-      if (wpt.jsonUrl) {
-        console.log('⏳ Polling WPT results...');
-        results.tests.external.wptMetrics = await pollWebPageTest(wpt.jsonUrl);
-      }
-    }
-
-    // 11. AI Readiness (robots/llms/X-Robots-Tag)
-    console.log('🤖 Testing AI Readiness...');
-    results.tests.ai = await testAIReadiness(url, results.tests.headers, $);
-
-    // 11b. AI Surfaces Readiness Score (six weighted sub-metrics)
-    console.log('🧠 Computing AI Surfaces Readiness...');
-    results.tests.aiSurfaces = await computeAISurfaces($, results.tests);
-
-    // 12. Optional Lighthouse (env LIGHTHOUSE=1 or request flag)
-    const shouldRunLH = (process.env.LIGHTHOUSE === '1') || Boolean(lhFlag);
-    if (shouldRunLH) {
-      console.log('💡 Running Lighthouse (optional)...');
-      results.tests.lighthouse = await runLighthouse(url);
-    }
-    
-    await browser.close();
-    console.log('✅ Audit complete!');
-    
-    // Tallenna cacheen
-    cache.set(url, {
-      timestamp: Date.now(),
-      data: results
-    });
-    
-    res.json(results);
-    
-  } catch (error) {
-    console.error('❌ Audit error:', error);
-    if (browser) await browser.close();
-    res.status(500).json({ 
-      error: 'Auditointi epäonnistui', 
-      details: error.message 
-    });
-  }
+// Rate limiting
+const limiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 20, // 20 requests per minute
+    message: { error: 'Too many requests, please try again later' }
 });
+app.use('/api/', limiter);
 
-// Test: Schema.org
-async function testSchema($, page) {
-  const schemas = [];
-  
-  // Etsi JSON-LD schemat
-  $('script[type="application/ld+json"]').each((i, elem) => {
-    try {
-      const raw = $(elem).html();
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        parsed.forEach(item => schemas.push(item));
-      } else if (parsed && Array.isArray(parsed['@graph'])) {
-        parsed['@graph'].forEach(item => schemas.push(item));
-      } else {
-        schemas.push(parsed);
-      }
-    } catch (e) {
-      console.error('Invalid JSON-LD:', e);
+// Lazy-loaded orchestrator
+let orchestrator = null;
+const getOrchestrator = () => {
+    if (!orchestrator) {
+        const OptimizedAuditOrchestrator = require('./services/audit-orchestrator.optimized');
+        orchestrator = new OptimizedAuditOrchestrator();
+        log.info('Audit orchestrator loaded');
     }
-  });
-  
-  // Etsi mikrodata
-  const hasItemscope = $('[itemscope]').length > 0;
-  
-  // Etsi RDFa
-  const hasRDFa = $('[typeof]').length > 0;
-  
-  return {
-    found: schemas.length > 0 || hasItemscope || hasRDFa,
-    jsonLdCount: schemas.length,
-    types: schemas
-      .flatMap(s => {
-        const t = s && s['@type'];
-        if (!t) return [];
-        return Array.isArray(t) ? t : [t];
-      })
-      .filter(Boolean),
-    hasMicrodata: hasItemscope,
-    hasRDFa: hasRDFa,
-    schemas: schemas.slice(0, 5) // Limit for response size
-  };
-}
+    return orchestrator;
+};
 
-// Validate required fields for common types
-function validateSchemaRequired(schemas) {
-  const issues = [];
-  const asArray = Array.isArray(schemas) ? schemas : [schemas];
-  const flatten = asArray.flatMap(s => Array.isArray(s['@graph']) ? s['@graph'] : [s]);
-  for (const s of flatten) {
-    const type = Array.isArray(s['@type']) ? s['@type'][0] : s['@type'];
-    if (!type) continue;
-    if (type === 'WebPage') {
-      if (!s.name && !s.headline) issues.push('WebPage: name/headline puuttuu');
-      if (!s.url) issues.push('WebPage: url puuttuu');
-    }
-    if (type === 'Article' || type === 'NewsArticle' || type === 'BlogPosting') {
-      if (!s.headline) issues.push('Article: headline puuttuu');
-      if (!s.datePublished) issues.push('Article: datePublished puuttuu');
-      if (!s.author) issues.push('Article: author puuttuu');
-    }
-    if (type === 'FAQPage') {
-      const hasQuestions = Array.isArray(s.mainEntity) && s.mainEntity.every(q => q['@type'] === 'Question' && q.acceptedAnswer);
-      if (!hasQuestions) issues.push('FAQPage: mainEntity/Question/acceptedAnswer puuttuu');
-    }
-  }
-  return issues;
-}
-
-// Test: JSON-LD
-async function testJsonLD($) {
-  const jsonldScripts = $('script[type="application/ld+json"]');
-  const results = [];
-
-  const normalize = (item) => ({
-    valid: true,
-    type: Array.isArray(item && item['@type']) ? item['@type'].join(',') : (item && item['@type']) || 'Unknown',
-    context: (item && item['@context']) || null
-  });
-
-  jsonldScripts.each((i, elem) => {
-    try {
-      const content = $(elem).html();
-      const parsed = JSON.parse(content);
-      if (Array.isArray(parsed)) {
-        parsed.forEach(p => results.push(normalize(p)));
-      } else if (parsed && Array.isArray(parsed['@graph'])) {
-        parsed['@graph'].forEach(p => results.push(normalize(p)));
-      } else {
-        results.push(normalize(parsed));
-      }
-    } catch (error) {
-      results.push({ valid: false, error: error.message });
-    }
-  });
-
-  return {
-    found: results.length > 0,
-    count: results.length,
-    items: results
-  };
-}
-
-// Test: Metadata
-async function testMetadata($) {
-  const meta = {
-    title: $('title').text() || null,
-    description: $('meta[name="description"]').attr('content') || null,
-    keywords: $('meta[name="keywords"]').attr('content') || null,
-    
-    // Open Graph
-    og: {
-      title: $('meta[property="og:title"]').attr('content') || null,
-      description: $('meta[property="og:description"]').attr('content') || null,
-      image: $('meta[property="og:image"]').attr('content') || null,
-      url: $('meta[property="og:url"]').attr('content') || null,
-      type: $('meta[property="og:type"]').attr('content') || null
-    },
-    
-    // Twitter Cards
-    twitter: {
-      card: $('meta[name="twitter:card"]').attr('content') || null,
-      title: $('meta[name="twitter:title"]').attr('content') || null,
-      description: $('meta[name="twitter:description"]').attr('content') || null,
-      image: $('meta[name="twitter:image"]').attr('content') || null
-    },
-    
-    // Other important meta
-    viewport: $('meta[name="viewport"]').attr('content') || null,
-    robots: $('meta[name="robots"]').attr('content') || null,
-    canonical: $('link[rel="canonical"]').attr('href') || null,
-    favicon: $('link[rel="icon"], link[rel="shortcut icon"]').attr('href') || null
-  };
-  
-  // Validation
-  const issues = [];
-  if (!meta.title) issues.push('Title puuttuu');
-  if (meta.title && meta.title.length > 60) issues.push('Title liian pitkä (>60 merkkiä)');
-  if (!meta.description) issues.push('Meta description puuttuu');
-  if (meta.description && meta.description.length > 160) issues.push('Description liian pitkä (>160 merkkiä)');
-  if (!meta.viewport) issues.push('Viewport meta puuttuu (mobiilioptimointia varten)');
-  
-  return {
-    ...meta,
-    issues
-  };
-}
-
-// Test: Performance
-async function testPerformance(page) {
-  const metrics = await page.evaluate(() => {
-    const nav = performance.getEntriesByType('navigation')[0];
-    const timing = performance.timing;
-    const paintEntries = performance.getEntriesByType('paint');
-
-    const domContentLoaded = nav ? nav.domContentLoadedEventEnd : (timing.domContentLoadedEventEnd - timing.navigationStart);
-    const loadComplete = nav ? nav.loadEventEnd : (timing.loadEventEnd - timing.navigationStart);
-
-    return {
-      domContentLoaded,
-      loadComplete,
-      firstPaint: paintEntries.find(e => e.name === 'first-paint')?.startTime || null,
-      firstContentfulPaint: paintEntries.find(e => e.name === 'first-contentful-paint')?.startTime || null,
-      resources: performance.getEntriesByType('resource').length,
-      memory: performance.memory ? {
-        usedJSHeapSize: Math.round(performance.memory.usedJSHeapSize / 1048576),
-        totalJSHeapSize: Math.round(performance.memory.totalJSHeapSize / 1048576)
-      } : null
-    };
-  });
-  
-  // Lighthouse simulation (simplified)
-  const score = {
-    fcp: metrics.firstContentfulPaint < 1800 ? 'good' : metrics.firstContentfulPaint < 3000 ? 'needs-improvement' : 'poor',
-    loadTime: metrics.loadComplete < 3000 ? 'good' : metrics.loadComplete < 5000 ? 'needs-improvement' : 'poor'
-  };
-  
-  return {
-    metrics,
-    score
-  };
-}
-
-// Test: Accessibility (axe-core + heuristics)
-async function testAccessibility(page) {
-  try {
-    await page.addScriptTag({ content: axeCore.source });
-    const axeReport = await page.evaluate(async () => {
-      return await window.axe.run({
-        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] }
-      });
-    });
-
-    const heuristics = await page.evaluate(() => {
-      const images = document.querySelectorAll('img');
-      const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
-      const links = document.querySelectorAll('a');
-      const forms = document.querySelectorAll('form');
-      const imagesWithoutAlt = Array.from(images).filter(img => !img.alt);
-      const emptyLinks = Array.from(links).filter(link => !link.textContent.trim() && !link.querySelector('img[alt]'));
-      const inputs = document.querySelectorAll('input, select, textarea');
-      const inputsWithoutLabels = Array.from(inputs).filter(input => {
-        if (input.closest('label')) return false;
-        if (input.hasAttribute('aria-label') || input.getAttribute('aria-labelledby')) return false;
-        const id = input.id;
-        if (id && document.querySelector(`label[for="${id}"]`)) return false;
-        return true;
-      });
-      const headingLevels = Array.from(headings).map(h => parseInt(h.tagName[1]));
-      let headingIssues = false;
-      for (let i = 1; i < headingLevels.length; i++) {
-        if (headingLevels[i] - headingLevels[i-1] > 1) { headingIssues = true; break; }
-      }
-      return {
-        images: { total: images.length, withoutAlt: imagesWithoutAlt.length, percentage: images.length ? Math.round((imagesWithoutAlt.length / images.length) * 100) : 0 },
-        links: { total: links.length, empty: emptyLinks.length },
-        forms: { total: forms.length, inputsWithoutLabels: inputsWithoutLabels.length },
-        headings: { total: headings.length, h1Count: document.querySelectorAll('h1').length, structureIssues: headingIssues },
-        lang: document.documentElement.lang || null
-      };
-    });
-
-    const issues = [];
-    if (heuristics.images.withoutAlt > 0) issues.push(`${heuristics.images.withoutAlt} kuvaa ilman alt-tekstiä`);
-    if (heuristics.links.empty > 0) issues.push(`${heuristics.links.empty} tyhjää linkkiä`);
-    if (heuristics.forms.inputsWithoutLabels > 0) issues.push(`${heuristics.forms.inputsWithoutLabels} lomakekenttää ilman labeliä`);
-    if (heuristics.headings.h1Count === 0) issues.push('H1-otsikko puuttuu');
-    if (heuristics.headings.h1Count > 1) issues.push('Useita H1-otsikoita');
-    if (heuristics.headings.structureIssues) issues.push('Otsikkohierarkiassa hyppyjä');
-    if (!heuristics.lang) issues.push('Lang-attribuutti puuttuu');
-
-    return {
-      axe: {
-        violations: (axeReport.violations || []).map(v => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.length })),
-        passes: (axeReport.passes || []).length,
-        incomplete: (axeReport.incomplete || []).length
-      },
-      ...heuristics,
-      issues,
-      score: ((axeReport.violations || []).length + issues.length) === 0 ? 'good' : (((axeReport.violations || []).length + issues.length) <= 3 ? 'needs-improvement' : 'poor')
-    };
-  } catch (e) {
-    // Fallback to heuristics only
-    const results = await page.evaluate(() => {
-      const images = document.querySelectorAll('img');
-      const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
-      const links = document.querySelectorAll('a');
-      const forms = document.querySelectorAll('form');
-      const imagesWithoutAlt = Array.from(images).filter(img => !img.alt);
-      const emptyLinks = Array.from(links).filter(link => !link.textContent.trim() && !link.querySelector('img[alt]'));
-      const inputs = document.querySelectorAll('input, select, textarea');
-      const inputsWithoutLabels = Array.from(inputs).filter(input => {
-        if (input.closest('label')) return false;
-        if (input.hasAttribute('aria-label') || input.getAttribute('aria-labelledby')) return false;
-        const id = input.id;
-        if (id && document.querySelector(`label[for="${id}"]`)) return false;
-        return true;
-      });
-      const headingLevels = Array.from(headings).map(h => parseInt(h.tagName[1]));
-      let headingIssues = false;
-      for (let i = 1; i < headingLevels.length; i++) {
-        if (headingLevels[i] - headingLevels[i-1] > 1) { headingIssues = true; break; }
-      }
-      return {
-        images: { total: images.length, withoutAlt: imagesWithoutAlt.length, percentage: images.length ? Math.round((imagesWithoutAlt.length / images.length) * 100) : 0 },
-        links: { total: links.length, empty: emptyLinks.length },
-        forms: { total: forms.length, inputsWithoutLabels: inputsWithoutLabels.length },
-        headings: { total: headings.length, h1Count: document.querySelectorAll('h1').length, structureIssues: headingIssues },
-        lang: document.documentElement.lang || null
-      };
-    });
-    const issues = [];
-    if (results.images.withoutAlt > 0) issues.push(`${results.images.withoutAlt} kuvaa ilman alt-tekstiä`);
-    if (results.links.empty > 0) issues.push(`${results.links.empty} tyhjää linkkiä`);
-    if (results.forms.inputsWithoutLabels > 0) issues.push(`${results.forms.inputsWithoutLabels} lomakekenttää ilman labeliä`);
-    if (results.headings.h1Count === 0) issues.push('H1-otsikko puuttuu');
-    if (results.headings.h1Count > 1) issues.push('Useita H1-otsikoita');
-    if (results.headings.structureIssues) issues.push('Otsikkohierarkiassa hyppyjä');
-    if (!results.lang) issues.push('Lang-attribuutti puuttuu');
-    return { ...results, issues, score: issues.length === 0 ? 'good' : issues.length <= 2 ? 'needs-improvement' : 'poor', axe: { error: e.message } };
-  }
-}
-
-// Test: SEO Basics
-async function testSEOBasics($, url) {
-  const urlObj = new URL(url);
-  
-  return {
-    // URL checks
-    https: urlObj.protocol === 'https:',
-    wwwRedirect: null, // Would need to test both versions
-    
-    // Content checks
-    h1: $('h1').length,
-    h1Text: $('h1').first().text() || null,
-    
-    // Internal/External links
-    internalLinks: $(`a[href^="/"], a[href^="${urlObj.origin}"]`).length,
-    externalLinks: $('a[href^="http"]:not([href^="' + urlObj.origin + '"])').length,
-    
-    // Text content
-    wordCount: $('body').text().split(/\s+/).filter(w => w.length > 0).length,
-    
-    // Social links
-    socialLinks: {
-      facebook: $('a[href*="facebook.com"]').length > 0,
-      twitter: $('a[href*="twitter.com"], a[href*="x.com"]').length > 0,
-      linkedin: $('a[href*="linkedin.com"]').length > 0,
-      instagram: $('a[href*="instagram.com"]').length > 0
-    }
-  };
-}
-
-// Test: External Files
-async function testExternalFiles(url) {
-  const urlObj = new URL(url);
-  const results = {};
-  
-  // Test robots.txt
-  try {
-    const robotsUrl = `${urlObj.origin}/robots.txt`;
-    const robotsResponse = await fetchWithTimeout(robotsUrl);
-    results.robots = {
-      exists: robotsResponse.ok,
-      url: robotsUrl,
-      size: robotsResponse.ok ? robotsResponse.headers.get('content-length') : null
-    };
-    
-    if (robotsResponse.ok) {
-      const robotsText = await robotsResponse.text();
-      results.robots.hasSitemap = robotsText.includes('Sitemap:');
-      results.robots.hasUserAgent = robotsText.includes('User-agent:');
-    }
-  } catch (error) {
-    results.robots = { exists: false, error: error.message };
-  }
-  
-  // Test sitemap.xml
-  try {
-    const sitemapUrl = `${urlObj.origin}/sitemap.xml`;
-    const sitemapResponse = await fetchWithTimeout(sitemapUrl);
-    results.sitemap = {
-      exists: sitemapResponse.ok,
-      url: sitemapUrl
-    };
-    
-    if (sitemapResponse.ok) {
-      const sitemapText = await sitemapResponse.text();
-      const parser = new xml2js.Parser();
-      const sitemapData = await parser.parseStringPromise(sitemapText);
-      
-      if (sitemapData.urlset) {
-        results.sitemap.urlCount = sitemapData.urlset.url ? sitemapData.urlset.url.length : 0;
-      } else if (sitemapData.sitemapindex) {
-        results.sitemap.isSitemapIndex = true;
-        results.sitemap.sitemapCount = sitemapData.sitemapindex.sitemap ? sitemapData.sitemapindex.sitemap.length : 0;
-      }
-    }
-  } catch (error) {
-    results.sitemap = { exists: false, error: error.message };
-  }
-  
-  // Test RSS feed
-  try {
-    const rssUrl = `${urlObj.origin}/feed/`;
-    const rssResponse = await fetchWithTimeout(rssUrl);
-    results.rss = {
-      exists: rssResponse.ok,
-      url: rssUrl
-    };
-  } catch (error) {
-    results.rss = { exists: false };
-  }
-  
-  // Test llms.txt
-  try {
-    const llmsUrl = `${urlObj.origin}/llms.txt`;
-    const llmsResponse = await fetchWithTimeout(llmsUrl);
-    results.llms = {
-      exists: llmsResponse.ok,
-      url: llmsUrl
-    };
-    if (llmsResponse.ok) {
-      const txt = await llmsResponse.text();
-      // naive basic info
-      const lines = txt.split(/\r?\n/).filter(Boolean).length;
-      results.llms.lines = lines;
-      results.llms.hasSitemap = /sitemap/i.test(txt);
-      results.llms.hasFaq = /faq/i.test(txt);
-      results.llms.hasDocs = /docs|documentation/i.test(txt);
-    }
-  } catch (error) {
-    results.llms = { exists: false };
-  }
-  
-  return results;
-}
-
-// AI Readiness: robots for AI bots, X-Robots-Tag, and overall score
-async function testAIReadiness(url, headersInfo, $) {
-  const urlObj = new URL(url);
-  const aiBots = [
-    'GPTBot',
-    'CCBot',
-    'ClaudeBot',
-    'anthropic-ai',
-    'PerplexityBot',
-    'Google-Extended',
-    'Applebot-Extended',
-    'bingbot'
-  ];
-
-  const out = {
-    robots: { url: `${urlObj.origin}/robots.txt`, allows: {}, exists: null },
-    xRobotsTag: null,
-    recommendations: [],
-    score: 100,
-    aiOverviewOptimization: analyzeAIOverviewReadiness($),
-    llmOptimization: analyzeLLMOptimization($),
-    contentStructure: analyzeContentStructure($),
-    aiSurfacesReadiness: calculateAISurfacesReadiness($, url, headersInfo)
-  };
-
-  // robots.txt parse
-  try {
-    const r = await fetchWithTimeout(out.robots.url, 8000);
-    out.robots.exists = r.ok;
-    if (r.ok) {
-      const txt = await r.text();
-      const lower = txt.toLowerCase();
-      for (const bot of aiBots) {
-        const botKey = bot.toLowerCase();
-        const hasUserAgent = lower.includes(`user-agent: ${botKey}`);
-        // Heuristic: if bot not specified, assume wildcard applies
-        const wildcardDisallowAll = /user-agent:\s*\*([\s\S]*?)disallow:\s*\//i.test(lower) && !/allow:\s*\//i.test(lower);
-        out.robots.allows[bot] = hasUserAgent ? !new RegExp(`user-agent:\\s*${botKey}[\\s\\S]*?disallow:\\s*/`, 'i').test(lower) : !wildcardDisallowAll;
-      }
-      if (!/sitemap:/i.test(txt)) {
-        out.recommendations.push('Add Sitemap reference to robots.txt');
-        out.score -= 5;
-      }
-    } else {
-      out.recommendations.push('Add robots.txt allowing AI crawlers');
-      out.score -= 10;
-    }
-  } catch (e) {
-    out.recommendations.push('robots.txt not reachable');
-    out.score -= 10;
-  }
-
-  // X-Robots-Tag from headers
-  if (headersInfo && headersInfo.headers) {
-    const xrt = headersInfo.headers['x-robots-tag'] || null;
-    out.xRobotsTag = xrt;
-    if (xrt && /(noai|noimageai|nosnippet)/i.test(xrt)) {
-      out.recommendations.push('Remove restrictive X-Robots-Tag for AI (noai/noimageai/nosnippet)');
-      out.score -= 10;
-    }
-  }
-
-  // Meta robots on page
-  try {
-    const metaRobots = $('meta[name="robots"]').attr('content') || '';
-    if (/noindex|nosnippet/i.test(metaRobots)) {
-      out.recommendations.push('Avoid page-level noindex/nosnippet for AI discoverability');
-      out.score -= 10;
-    }
-  } catch (_) {}
-
-  // Clamp score
-  if (out.score < 0) out.score = 0;
-  return out;
-}
-
-// AI Surfaces Readiness Score (0-100) with weighted sub-metrics
-async function computeAISurfaces($, tests) {
-  // Sub-metrics: Answer Clarity (25), Structured Data (20), Extractable Facts (20), Citations (15), Recency (10), Technical (10)
-  const weights = {
-    answerClarity: 25,
-    structuredData: 20,
-    extractableFacts: 20,
-    citations: 15,
-    recency: 10,
-    technical: 10
-  };
-
-  // Language-aware keyword sets (fi, sv, en, de, ja)
-  const pageLangRaw = (tests.accessibility?.lang || $('html').attr('lang') || '').toLowerCase();
-  const lang = pageLangRaw.slice(0, 2);
-  const bodyText = (($('body').text() || '').toLowerCase());
-  const qTerms = {
-    fi: ['mikä on', 'miten', 'ohje', 'use case', 'hyöty', 'ukk', 'kysymys'],
-    sv: ['vad är', 'hur man', 'vanliga frågor', 'användningsfall', 'fördel', 'faq'],
-    en: ['what is', 'how to', 'faq', 'use case', 'benefit'],
-    de: ['was ist', 'wie man', 'faq', 'anwendungsfall', 'vorteil'],
-    ja: ['とは', '使い方', 'よくある質問', 'ユースケース', 'メリット']
-  };
-  const citationTerms = {
-    fi: ['lähteet', 'viitteet'],
-    sv: ['källor', 'referenser'],
-    en: ['references', 'sources'],
-    de: ['quellen', 'verweise'],
-    ja: ['参考', '出典']
-  };
-  const recencyTerms = {
-    fi: ['päivitetty', 'julkaistu'],
-    sv: ['uppdaterad', 'publicerad'],
-    en: ['updated', 'published'],
-    de: ['aktualisiert', 'veröffentlicht'],
-    ja: ['更新', '公開']
-  };
-  const langSafe = (k) => (k in qTerms ? k : 'en');
-  const any = (text, arr) => arr.some(t => text.includes(t));
-
-  // Answer Clarity: presence of H1, Q/A patterns, clear headings
-  const answerClarity = (() => {
-    const h1 = $('h1').length;
-    const faqs = $('script[type="application/ld+json"]').filter((_, el)=>/FAQPage/.test($(el).html()||'')).length;
-    const qText = any(bodyText, qTerms[langSafe(lang)]);
-    let score = 0;
-    if (h1 >= 1) score += 40;
-    if (faqs > 0) score += 40;
-    if (qText) score += 20;
-    return score;
-  })();
-
-  // Structured Data: count/types + requiredIssues
-  const structuredData = (() => {
-    const types = tests.schema?.types?.length || 0;
-    const issues = (tests.schema?.requiredIssues || []).length;
-    let base = Math.min(100, types * 15); // up to ~3+ useful types
-    base -= Math.min(40, issues * 10);
-    return Math.max(0, base);
-  })();
-
-  // Extractable Facts: presence of key facts in meta/OG + definition lists
-  const extractableFacts = (() => {
-    let score = 0;
-    const hasMeta = Boolean(tests.metadata?.title && tests.metadata?.description);
-    const og = tests.metadata?.og || {};
-    const hasOG = Boolean(og.title || og.description || og.image);
-    const dl = $('dl dt, dl dd').length > 2;
-    if (hasMeta) score += 40;
-    if (hasOG) score += 40;
-    if (dl) score += 20;
-    return score;
-  })();
-
-  // Citations: external links and rel attributes
-  const citations = (() => {
-    const external = $('a[href^="http"]:not([href*="' + (tests.seo ? new URL('https://example.com').origin : '') + '"])').length; // rough
-    const rels = $('a[rel~="nofollow"], a[rel~="noopener"]').length;
-    let score = 0;
-    if (external > 3) score += 60; else if (external > 0) score += 40;
-    if (rels > 2) score += 20; else if (rels > 0) score += 10;
-    // bonus for presence of references section
-    if (any(bodyText, citationTerms[langSafe(lang)])) score += 20;
-    return Math.min(100, score);
-  })();
-
-  // Recency: look for datePublished/dateModified
-  const recency = (() => {
-    let score = 0;
-    const text = bodyText;
-    const hasDates = /202[3-9]|202[0-9]-\d{2}-\d{2}/.test(text);
-    const jsonLdDates = $('script[type="application/ld+json"]').filter((_, el)=>/(datePublished|dateModified)/.test($(el).html()||'')).length;
-    if (hasDates) score += 50;
-    if (jsonLdDates) score += 50;
-    // language keywords for recency
-    if (any(text, recencyTerms[langSafe(lang)])) score = Math.min(100, score + 10);
-    return Math.min(100, score);
-  })();
-
-  // Technical: headers & robots/sitemap/https
-  const technical = (() => {
-    let score = 0;
-    if (tests.seo?.https) score += 30;
-    if (tests.files?.robots?.exists) score += 20;
-    if (tests.files?.sitemap?.exists) score += 20;
-    if (tests.headers?.cdn) score += 15;
-    const perfOK = tests.performance?.score && (tests.performance.score.fcp !== 'poor' && tests.performance.score.loadTime !== 'poor');
-    if (perfOK) score += 15;
-    return Math.min(100, score);
-  })();
-
-  const subs = { answerClarity, structuredData, extractableFacts, citations, recency, technical };
-  const total = (
-    answerClarity * (weights.answerClarity/100) +
-    structuredData * (weights.structuredData/100) +
-    extractableFacts * (weights.extractableFacts/100) +
-    citations * (weights.citations/100) +
-    recency * (weights.recency/100) +
-    technical * (weights.technical/100)
-  );
-
-  const score = Math.round(total);
-  const grade = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';
-
-  const recommendations = [];
-  if (answerClarity < 60) recommendations.push('Selkeytä vastausrakennetta: lisää H1, FAQ/Q&A‑osio');
-  if (structuredData < 60) recommendations.push('Laajenna schemaa ja korjaa puuttuvat pakolliset kentät');
-  if (extractableFacts < 60) recommendations.push('Lisää tiiviitä faktoja (meta/OG, määrittelylistat)');
-  if (citations < 60) recommendations.push('Lisää viitteitä ja lähdelinkkejä; huomioi rel‑attribuutit');
-  if (recency < 60) recommendations.push('Päivitä julkaisu/muokkauspäivä (JSON‑LD ja sivulle)');
-  if (technical < 60) recommendations.push('Paranna teknistä pohjaa (HTTPS, robots, sitemap, suorituskyky)');
-
-  return { score, grade, weights, subs, recommendations };
-}
-
-// Analyze Google AI Overview readiness
-function analyzeAIOverviewReadiness($) {
-  const analysis = {
-    score: 100,
-    featuredSnippetPotential: 0,
-    structureOptimization: 0,
-    entityRecognition: 0,
-    issues: [],
-    recommendations: []
-  };
-
-  // Featured Snippet Potential
-  const lists = $('ol, ul').length;
-  const tables = $('table').length;
-  const definitions = $('p').filter((i, el) => {
-    const text = $(el).text().toLowerCase();
-    return text.includes(' is ') || text.includes(' are ') || text.includes(' means ');
-  }).length;
-
-  if (lists > 0) analysis.featuredSnippetPotential += 20;
-  if (tables > 0) analysis.featuredSnippetPotential += 25;
-  if (definitions > 0) analysis.featuredSnippetPotential += 30;
-
-  // Question-Answer Structure
-  const headings = $('h1, h2, h3, h4, h5, h6');
-  const questionHeadings = headings.filter((i, el) => {
-    const text = $(el).text().toLowerCase();
-    return text.includes('?') || text.includes('what') || text.includes('how') || text.includes('why') || text.includes('when') || text.includes('where');
-  }).length;
-
-  if (questionHeadings > 0) {
-    analysis.featuredSnippetPotential += 15;
-  } else {
-    analysis.recommendations.push('Add question-based headings for AI Overview optimization');
-  }
-
-  // Structure Optimization
-  const properHeadingHierarchy = headings.length > 2;
-  const hasIntroduction = $('p').first().text().length > 100;
-  
-  if (properHeadingHierarchy) analysis.structureOptimization += 30;
-  if (hasIntroduction) analysis.structureOptimization += 20;
-  
-  // Entity Recognition
-  const capitalizedWords = $('body').text().match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) || [];
-  const uniqueEntities = [...new Set(capitalizedWords)].filter(word => word.length > 3).length;
-  
-  if (uniqueEntities > 5) analysis.entityRecognition += 30;
-  else analysis.recommendations.push('Include more proper nouns and named entities');
-
-  // Wikipedia-style first paragraph
-  const firstParagraph = $('p').first().text();
-  const hasWikipediaStyle = firstParagraph.length > 150 && firstParagraph.split(' ').length > 20;
-  if (hasWikipediaStyle) {
-    analysis.entityRecognition += 20;
-  } else {
-    analysis.recommendations.push('Write comprehensive introductory paragraph (Wikipedia-style)');
-  }
-
-  analysis.score = Math.min(100, analysis.featuredSnippetPotential + analysis.structureOptimization + analysis.entityRecognition);
-  
-  return analysis;
-}
-
-// Analyze LLM optimization
-function analyzeLLMOptimization($) {
-  const analysis = {
-    score: 100,
-    citationFriendly: 0,
-    semanticStructure: 0,
-    factualContent: 0,
-    issues: [],
-    recommendations: []
-  };
-
-  // Citation-friendly content
-  const quotableStatements = $('p').filter((i, el) => {
-    const text = $(el).text();
-    return text.length > 50 && text.length < 200 && (
-      text.includes('%') || 
-      text.includes('according to') || 
-      text.includes('research shows') ||
-      text.includes('study found') ||
-      /\b\d{4}\b/.test(text) // Years
-    );
-  }).length;
-
-  if (quotableStatements > 2) analysis.citationFriendly += 40;
-  else analysis.recommendations.push('Add more quotable statistics and research citations');
-
-  // Source attributions
-  const attributions = $('body').text().match(/according to|source:|via |per |citing |research by/gi) || [];
-  if (attributions.length > 0) {
-    analysis.citationFriendly += 30;
-  } else {
-    analysis.recommendations.push('Include source attributions and research citations');
-  }
-
-  // Semantic structure
-  const topicKeywords = $('h1, h2, h3').text().toLowerCase();
-  const bodyText = $('body').text().toLowerCase();
-  const semanticConsistency = topicKeywords.split(' ').filter(word => 
-    word.length > 3 && bodyText.includes(word)
-  ).length;
-
-  if (semanticConsistency > 5) analysis.semanticStructure += 35;
-  else analysis.recommendations.push('Improve semantic consistency between headings and content');
-
-  // Factual vs opinion content
-  const factualIndicators = bodyText.match(/studies? show|research indicates|data reveals|according to|statistics|evidence|findings/g) || [];
-  const opinionIndicators = bodyText.match(/i think|in my opinion|i believe|personally|feel that/g) || [];
-  
-  const factualRatio = factualIndicators.length / (factualIndicators.length + opinionIndicators.length + 1);
-  if (factualRatio > 0.7) {
-    analysis.factualContent += 35;
-  } else {
-    analysis.recommendations.push('Increase factual content with research backing');
-  }
-
-  analysis.score = Math.min(100, analysis.citationFriendly + analysis.semanticStructure + analysis.factualContent);
-  
-  return analysis;
-}
-
-// Analyze content structure for AI
-function analyzeContentStructure($) {
-  const analysis = {
-    score: 100,
-    hierarchyScore: 0,
-    readabilityScore: 0,
-    completenessScore: 0,
-    issues: [],
-    recommendations: []
-  };
-
-  // Heading hierarchy
-  const headings = $('h1, h2, h3, h4, h5, h6');
-  const headingLevels = Array.from(headings).map(h => parseInt(h.tagName[1]));
-  
-  let hierarchyIssues = 0;
-  for (let i = 1; i < headingLevels.length; i++) {
-    if (headingLevels[i] - headingLevels[i-1] > 1) hierarchyIssues++;
-  }
-  
-  if (hierarchyIssues === 0 && headings.length > 2) {
-    analysis.hierarchyScore = 40;
-  } else {
-    analysis.recommendations.push('Fix heading hierarchy for better AI understanding');
-  }
-
-  // Content readability for AI
-  const paragraphs = $('p');
-  const avgParagraphLength = Array.from(paragraphs).reduce((sum, p) => 
-    sum + $(p).text().split(' ').length, 0) / paragraphs.length;
-  
-  if (avgParagraphLength > 15 && avgParagraphLength < 100) {
-    analysis.readabilityScore = 30;
-  } else {
-    analysis.recommendations.push('Optimize paragraph length (15-100 words) for AI processing');
-  }
-
-  // Topic completeness
-  const wordCount = $('body').text().split(' ').length;
-  const headingCount = headings.length;
-  const contentDensity = wordCount / (headingCount || 1);
-  
-  if (contentDensity > 100 && contentDensity < 500) {
-    analysis.completenessScore = 30;
-  } else {
-    analysis.recommendations.push('Balance content depth - aim for 100-500 words per section');
-  }
-
-  analysis.score = analysis.hierarchyScore + analysis.readabilityScore + analysis.completenessScore;
-  
-  return analysis;
-}
-
-// Calculate comprehensive AI Surfaces Readiness Score
-function calculateAISurfacesReadiness($, url, headersInfo) {
-  const analysis = {
-    overallScore: 0,
-    subMetrics: {
-      answerClarity: { score: 0, details: [], recommendations: [] },
-      structuredData: { score: 0, details: [], recommendations: [] },
-      extractableFacts: { score: 0, details: [], recommendations: [] },
-      citations: { score: 0, details: [], recommendations: [] },
-      recency: { score: 0, details: [], recommendations: [] },
-      technicalOptimization: { score: 0, details: [], recommendations: [] }
-    },
-    grade: 'F',
-    recommendations: [],
-    strengths: []
-  };
-
-  // 1. Answer Clarity (25% weight)
-  const answerClarity = analyzeAnswerClarity($);
-  analysis.subMetrics.answerClarity = answerClarity;
-
-  // 2. Structured Data Quality (20% weight)
-  const structuredData = analyzeStructuredDataQuality($);
-  analysis.subMetrics.structuredData = structuredData;
-
-  // 3. Extractable Facts (20% weight)
-  const extractableFacts = analyzeExtractableFacts($);
-  analysis.subMetrics.extractableFacts = extractableFacts;
-
-  // 4. Citations and Sources (15% weight)
-  const citations = analyzeCitations($);
-  analysis.subMetrics.citations = citations;
-
-  // 5. Content Recency (10% weight)
-  const recency = analyzeContentRecency($, url);
-  analysis.subMetrics.recency = recency;
-
-  // 6. Technical Optimization (10% weight)
-  const technical = analyzeTechnicalOptimization($, headersInfo);
-  analysis.subMetrics.technicalOptimization = technical;
-
-  // Calculate weighted overall score
-  analysis.overallScore = Math.round(
-    (answerClarity.score * 0.25) +
-    (structuredData.score * 0.20) +
-    (extractableFacts.score * 0.20) +
-    (citations.score * 0.15) +
-    (recency.score * 0.10) +
-    (technical.score * 0.10)
-  );
-
-  // Assign grade
-  if (analysis.overallScore >= 90) analysis.grade = 'A+';
-  else if (analysis.overallScore >= 80) analysis.grade = 'A';
-  else if (analysis.overallScore >= 70) analysis.grade = 'B';
-  else if (analysis.overallScore >= 60) analysis.grade = 'C';
-  else if (analysis.overallScore >= 50) analysis.grade = 'D';
-  else analysis.grade = 'F';
-
-  // Compile top recommendations
-  const allRecommendations = [
-    ...answerClarity.recommendations,
-    ...structuredData.recommendations,
-    ...extractableFacts.recommendations,
-    ...citations.recommendations,
-    ...recency.recommendations,
-    ...technical.recommendations
-  ];
-  analysis.recommendations = allRecommendations.slice(0, 5);
-
-  // Compile strengths
-  const allStrengths = [];
-  if (answerClarity.score >= 80) allStrengths.push('Excellent answer clarity and structure');
-  if (structuredData.score >= 80) allStrengths.push('Comprehensive structured data implementation');
-  if (extractableFacts.score >= 80) allStrengths.push('Rich extractable facts and data');
-  if (citations.score >= 80) allStrengths.push('Strong citation and source quality');
-  if (recency.score >= 80) allStrengths.push('Fresh and up-to-date content');
-  if (technical.score >= 80) allStrengths.push('Optimal technical performance');
-  analysis.strengths = allStrengths;
-
-  return analysis;
-}
-
-// Analyze answer clarity for AI systems
-function analyzeAnswerClarity($) {
-  const result = { score: 0, details: [], recommendations: [] };
-  let score = 0;
-
-  // Direct answer patterns
-  const directAnswers = $('p').filter((i, el) => {
-    const text = $(el).text();
-    return text.length > 50 && text.length < 300 && (
-      text.toLowerCase().includes('the answer is') ||
-      text.toLowerCase().includes('in summary') ||
-      text.toLowerCase().includes('to summarize') ||
-      /^[A-Z].*\sis\s/.test(text) ||
-      /^[A-Z].*\sare\s/.test(text)
-    );
-  }).length;
-
-  if (directAnswers > 0) {
-    score += 25;
-    result.details.push(`Found ${directAnswers} direct answer patterns`);
-  } else {
-    result.recommendations.push('Add direct answer statements (e.g., "The answer is...", "X is...")');
-  }
-
-  // Question-based headings
-  const questionHeadings = $('h1, h2, h3, h4').filter((i, el) => {
-    const text = $(el).text().toLowerCase();
-    return text.includes('?') || 
-           /^(what|how|why|when|where|which|who)\s/.test(text) ||
-           text.includes('what is') || text.includes('how to');
-  }).length;
-
-  if (questionHeadings >= 2) {
-    score += 20;
-    result.details.push(`${questionHeadings} question-based headings found`);
-  } else {
-    result.recommendations.push('Add question-based headings (What is X?, How to Y?)');
-  }
-
-  // List and step structures
-  const lists = $('ol, ul').length;
-  const definitionLists = $('dl').length;
-  
-  if (lists >= 2) {
-    score += 15;
-    result.details.push(`${lists} structured lists found`);
-  } else {
-    result.recommendations.push('Add more structured lists for step-by-step information');
-  }
-
-  // Clear definitions
-  const definitions = $('p').filter((i, el) => {
-    const text = $(el).text().toLowerCase();
-    return text.includes(' is a ') || text.includes(' are a ') || 
-           text.includes(' means ') || text.includes(' refers to ');
-  }).length;
-
-  if (definitions > 0) {
-    score += 15;
-    result.details.push(`${definitions} clear definitions found`);
-  } else {
-    result.recommendations.push('Add clear definitions using "X is a..." patterns');
-  }
-
-  // Summary sections
-  const summaries = $('h2, h3, h4').filter((i, el) => {
-    const text = $(el).text().toLowerCase();
-    return text.includes('summary') || text.includes('conclusion') || 
-           text.includes('key points') || text.includes('takeaways');
-  }).length;
-
-  if (summaries > 0) {
-    score += 15;
-    result.details.push('Summary sections detected');
-  } else {
-    result.recommendations.push('Add summary or key takeaways sections');
-  }
-
-  // Table data for comparisons
-  const tables = $('table').length;
-  if (tables > 0) {
-    score += 10;
-    result.details.push(`${tables} data tables for comparisons`);
-  }
-
-  result.score = Math.min(100, score);
-  return result;
-}
-
-// Analyze structured data quality
-function analyzeStructuredDataQuality($) {
-  const result = { score: 0, details: [], recommendations: [] };
-  let score = 0;
-
-  // JSON-LD presence and types
-  const jsonLdScripts = $('script[type="application/ld+json"]');
-  const schemaTypes = new Set();
-  
-  jsonLdScripts.each((i, elem) => {
-    try {
-      const content = $(elem).html();
-      const parsed = JSON.parse(content);
-      
-      const extractTypes = (obj) => {
-        if (obj && obj['@type']) {
-          const types = Array.isArray(obj['@type']) ? obj['@type'] : [obj['@type']];
-          types.forEach(type => schemaTypes.add(type));
-        }
-        if (obj && obj['@graph']) {
-          obj['@graph'].forEach(extractTypes);
-        }
-      };
-      
-      if (Array.isArray(parsed)) {
-        parsed.forEach(extractTypes);
-      } else {
-        extractTypes(parsed);
-      }
-    } catch (e) {
-      // Invalid JSON-LD
-    }
-  });
-
-  if (schemaTypes.size > 0) {
-    score += 30;
-    result.details.push(`${schemaTypes.size} schema types: ${Array.from(schemaTypes).join(', ')}`);
-    
-    // Bonus for AI-friendly types
-    const aiTypes = ['Article', 'BlogPosting', 'NewsArticle', 'HowTo', 'QAPage', 'FAQPage', 'Product', 'Organization', 'Person', 'Event'];
-    const foundAiTypes = Array.from(schemaTypes).filter(type => aiTypes.includes(type));
-    if (foundAiTypes.length > 0) {
-      score += 20;
-      result.details.push(`AI-friendly types: ${foundAiTypes.join(', ')}`);
-    }
-  } else {
-    result.recommendations.push('Add JSON-LD structured data for better AI understanding');
-  }
-
-  // Check for rich properties
-  jsonLdScripts.each((i, elem) => {
-    try {
-      const content = $(elem).html();
-      const parsed = JSON.parse(content);
-      const jsonStr = JSON.stringify(parsed);
-      
-      // Essential properties for AI
-      const properties = ['headline', 'description', 'author', 'datePublished', 'dateModified', 'image', 'url'];
-      const foundProps = properties.filter(prop => jsonStr.includes(`"${prop}"`));
-      
-      if (foundProps.length >= 4) {
-        score += 25;
-        result.details.push(`Rich properties: ${foundProps.join(', ')}`);
-      } else {
-        result.recommendations.push(`Add missing properties: ${properties.filter(p => !foundProps.includes(p)).join(', ')}`);
-      }
-    } catch (e) {
-      // Skip invalid JSON
-    }
-  });
-
-  // Microdata fallback check
-  const microdataItems = $('[itemscope]').length;
-  if (microdataItems > 0 && schemaTypes.size === 0) {
-    score += 10;
-    result.details.push(`${microdataItems} microdata items (consider upgrading to JSON-LD)`);
-    result.recommendations.push('Consider migrating microdata to JSON-LD for better AI compatibility');
-  }
-
-  // Breadcrumb markup
-  const breadcrumbs = $('[typeof="BreadcrumbList"], script:contains("BreadcrumbList")').length;
-  if (breadcrumbs > 0) {
-    score += 15;
-    result.details.push('Breadcrumb navigation markup found');
-  } else {
-    result.recommendations.push('Add BreadcrumbList schema for better page context');
-  }
-
-  result.score = Math.min(100, score);
-  return result;
-}
-
-// Analyze extractable facts and data
-function analyzeExtractableFacts($) {
-  const result = { score: 0, details: [], recommendations: [] };
-  let score = 0;
-
-  // Statistical data
-  const bodyText = $('body').text();
-  const statistics = bodyText.match(/\d+(\.\d+)?%|\d+(\,\d{3})*\s*(users|people|customers|companies|dollars|€|£|\$)/gi) || [];
-  
-  if (statistics.length >= 3) {
-    score += 25;
-    result.details.push(`${statistics.length} statistical data points found`);
-  } else {
-    result.recommendations.push('Include more statistical data and specific numbers');
-  }
-
-  // Dates and temporal information
-  const dates = bodyText.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|\d{4}|\d{1,2}\/\d{1,2}\/\d{4})\b/gi) || [];
-  
-  if (dates.length >= 2) {
-    score += 15;
-    result.details.push(`${dates.length} dates and temporal references`);
-  } else {
-    result.recommendations.push('Add specific dates and temporal context');
-  }
-
-  // Named entities (people, places, organizations)
-  const capitalizedWords = bodyText.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) || [];
-  const uniqueEntities = [...new Set(capitalizedWords)].filter(word => 
-    word.length > 3 && !['This', 'That', 'The', 'And', 'But', 'For', 'With'].includes(word)
-  );
-  
-  if (uniqueEntities.length >= 5) {
-    score += 20;
-    result.details.push(`${uniqueEntities.length} named entities identified`);
-  } else {
-    result.recommendations.push('Include more specific names, places, and organizations');
-  }
-
-  // Quotable facts (short, precise statements)
-  const quotableFacts = $('p').filter((i, el) => {
-    const text = $(el).text();
-    return text.length > 30 && text.length < 200 && (
-      text.includes('%') || text.includes('study') || text.includes('research') ||
-      text.includes('according to') || /\d+/.test(text)
-    );
-  }).length;
-
-  if (quotableFacts >= 3) {
-    score += 20;
-    result.details.push(`${quotableFacts} quotable fact statements`);
-  } else {
-    result.recommendations.push('Create more short, quotable fact statements with supporting data');
-  }
-
-  // Structured data like addresses, phone numbers, emails
-  const contactInfo = bodyText.match(/@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\+?\d{1,4}[-.\s]?\(?\d{1,3}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4}|\d{1,5}\s+[A-Z][a-z]+\s+(Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln)/gi) || [];
-  
-  if (contactInfo.length > 0) {
-    score += 10;
-    result.details.push('Contact information and addresses found');
-  }
-
-  // Product information, prices, specifications
-  const productInfo = bodyText.match(/\$\d+|\€\d+|£\d+|price|cost|specification|feature|dimension|weight|size/gi) || [];
-  
-  if (productInfo.length >= 3) {
-    score += 10;
-    result.details.push('Product information and specifications detected');
-  }
-
-  result.score = Math.min(100, score);
-  return result;
-}
-
-// Analyze citations and source quality
-function analyzeCitations($) {
-  const result = { score: 0, details: [], recommendations: [] };
-  let score = 0;
-
-  // Source attribution patterns
-  const attributions = $('body').text().match(/according to|source:|via |per |citing |research by|study by|data from|reported by/gi) || [];
-  
-  if (attributions.length >= 2) {
-    score += 30;
-    result.details.push(`${attributions.length} source attributions found`);
-  } else {
-    result.recommendations.push('Add source attributions (e.g., "according to...", "research by...")');
-  }
-
-  // External links to authoritative sources
-  const externalLinks = $('a[href^="http"]').filter((i, el) => {
-    const href = $(el).attr('href').toLowerCase();
-    return !href.includes(new URL($('base').attr('href') || 'http://example.com').hostname);
-  });
-
-  const authoritativeLinks = externalLinks.filter((i, el) => {
-    const href = $(el).attr('href').toLowerCase();
-    return href.includes('gov') || href.includes('edu') || href.includes('org') ||
-           href.includes('wikipedia') || href.includes('pubmed') || href.includes('scholar.google');
-  }).length;
-
-  if (authoritativeLinks >= 2) {
-    score += 25;
-    result.details.push(`${authoritativeLinks} links to authoritative sources`);
-  } else {
-    result.recommendations.push('Link to more authoritative sources (.gov, .edu, Wikipedia, academic papers)');
-  }
-
-  // Publication dates near claims
-  const bodyText = $('body').text();
-  const recentYears = bodyText.match(/20(1[8-9]|2[0-5])/g) || [];
-  
-  if (recentYears.length >= 2) {
-    score += 15;
-    result.details.push('Recent publication dates found in content');
-  } else {
-    result.recommendations.push('Include publication dates for claims and statistics');
-  }
-
-  // Primary source indicators
-  const primarySources = bodyText.match(/original research|primary study|first-hand|direct observation|official report|government data/gi) || [];
-  
-  if (primarySources.length > 0) {
-    score += 20;
-    result.details.push('Primary source indicators detected');
-  } else {
-    result.recommendations.push('Reference primary sources and original research when possible');
-  }
-
-  // Bibliography or references section
-  const refSections = $('h2, h3, h4').filter((i, el) => {
-    const text = $(el).text().toLowerCase();
-    return text.includes('reference') || text.includes('source') || text.includes('bibliography');
-  }).length;
-
-  if (refSections > 0) {
-    score += 10;
-    result.details.push('Dedicated references or sources section found');
-  } else {
-    result.recommendations.push('Consider adding a references or sources section');
-  }
-
-  result.score = Math.min(100, score);
-  return result;
-}
-
-// Analyze content recency and freshness
-function analyzeContentRecency($, url) {
-  const result = { score: 0, details: [], recommendations: [] };
-  let score = 0;
-
-  // Published and modified dates in schema
-  let hasPublishedDate = false;
-  let hasModifiedDate = false;
-  
-  $('script[type="application/ld+json"]').each((i, elem) => {
-    try {
-      const content = $(elem).html();
-      const parsed = JSON.parse(content);
-      const jsonStr = JSON.stringify(parsed);
-      
-      if (jsonStr.includes('datePublished')) {
-        hasPublishedDate = true;
-        score += 20;
-      }
-      if (jsonStr.includes('dateModified')) {
-        hasModifiedDate = true;
-        score += 20;
-      }
-    } catch (e) {
-      // Invalid JSON
-    }
-  });
-
-  if (hasPublishedDate) result.details.push('Published date in structured data');
-  if (hasModifiedDate) result.details.push('Modified date in structured data');
-  
-  if (!hasPublishedDate) result.recommendations.push('Add datePublished to structured data');
-  if (!hasModifiedDate) result.recommendations.push('Add dateModified to structured data');
-
-  // Recent dates in content
-  const currentYear = new Date().getFullYear();
-  const bodyText = $('body').text();
-  const recentDates = bodyText.match(new RegExp(`\\b(${currentYear}|${currentYear-1}|${currentYear-2})\\b`, 'g')) || [];
-  
-  if (recentDates.length >= 3) {
-    score += 25;
-    result.details.push('Recent dates found throughout content');
-  } else {
-    result.recommendations.push('Include recent dates and current year references');
-  }
-
-  // "Updated" or "revised" indicators
-  const updateIndicators = bodyText.match(/updated|revised|modified|current as of|last reviewed/gi) || [];
-  
-  if (updateIndicators.length > 0) {
-    score += 15;
-    result.details.push('Content freshness indicators found');
-  } else {
-    result.recommendations.push('Add "last updated" or "current as of" indicators');
-  }
-
-  // Time-sensitive content warnings
-  const timeSensitive = bodyText.match(/as of|current|latest|now|today|this year|recently/gi) || [];
-  
-  if (timeSensitive.length >= 3) {
-    score += 10;
-    result.details.push('Time-sensitive language detected');
-  }
-
-  // Copyright year
-  const copyrightYears = bodyText.match(/copyright.*(\d{4})|©.*(\d{4})/gi) || [];
-  const latestCopyright = copyrightYears.length > 0 ? 
-    Math.max(...copyrightYears.map(c => parseInt(c.match(/\d{4}/)[0]))) : 0;
-  
-  if (latestCopyright >= currentYear - 1) {
-    score += 10;
-    result.details.push(`Current copyright year (${latestCopyright})`);
-  } else {
-    result.recommendations.push('Update copyright year to current year');
-  }
-
-  result.score = Math.min(100, score);
-  return result;
-}
-
-// Analyze technical optimization for AI crawlers
-function analyzeTechnicalOptimization($, headersInfo) {
-  const result = { score: 0, details: [], recommendations: [] };
-  let score = 0;
-
-  // Page loading speed indicators
-  const resourceCount = $('img, script, link[rel="stylesheet"]').length;
-  
-  if (resourceCount < 50) {
-    score += 20;
-    result.details.push(`Reasonable resource count (${resourceCount})`);
-  } else {
-    result.recommendations.push('Optimize page resources for faster loading');
-  }
-
-  // Critical rendering path
-  const inlineStyles = $('style').length;
-  const inlineScripts = $('script:not([src])').length;
-  
-  if (inlineStyles <= 2 && inlineScripts <= 3) {
-    score += 15;
-    result.details.push('Minimal inline styles and scripts');
-  } else {
-    result.recommendations.push('Minimize inline styles and scripts');
-  }
-
-  // Meta robots and indexing directives
-  const metaRobots = $('meta[name="robots"]').attr('content');
-  const noIndex = metaRobots && metaRobots.toLowerCase().includes('noindex');
-  const noSnippet = metaRobots && metaRobots.toLowerCase().includes('nosnippet');
-  
-  if (!noIndex && !noSnippet) {
-    score += 20;
-    result.details.push('Page allows indexing and snippets');
-  } else {
-    if (noIndex) result.recommendations.push('Remove noindex directive to allow AI crawling');
-    if (noSnippet) result.recommendations.push('Remove nosnippet directive to allow AI extraction');
-  }
-
-  // Structured content hierarchy
-  const headings = $('h1, h2, h3, h4, h5, h6');
-  const h1Count = $('h1').length;
-  
-  if (h1Count === 1 && headings.length >= 3) {
-    score += 15;
-    result.details.push(`Proper heading hierarchy (${headings.length} headings, 1 H1)`);
-  } else {
-    result.recommendations.push('Ensure single H1 and logical heading hierarchy');
-  }
-
-  // Mobile-friendly viewport
-  const viewport = $('meta[name="viewport"]').attr('content');
-  
-  if (viewport && viewport.includes('width=device-width')) {
-    score += 10;
-    result.details.push('Mobile-responsive viewport configured');
-  } else {
-    result.recommendations.push('Add mobile-responsive viewport meta tag');
-  }
-
-  // Language declaration
-  const lang = $('html').attr('lang');
-  
-  if (lang) {
-    score += 10;
-    result.details.push(`Language declared (${lang})`);
-  } else {
-    result.recommendations.push('Add language attribute to html element');
-  }
-
-  // Semantic HTML elements
-  const semanticElements = $('article, section, header, footer, nav, aside, main').length;
-  
-  if (semanticElements >= 3) {
-    score += 10;
-    result.details.push('Good use of semantic HTML elements');
-  } else {
-    result.recommendations.push('Use more semantic HTML elements (article, section, etc.)');
-  }
-
-  result.score = Math.min(100, score);
-  return result;
-}
-
-// Build llms.txt content using heuristics
-async function generateLlmsTxt(url) {
-  const urlObj = new URL(url);
-  const origin = urlObj.origin;
-
-  // Fetch homepage and try to extract useful links
-  let homepageHtml = '';
-  try {
-    const r = await fetchWithTimeout(origin, 10000);
-    homepageHtml = r.ok ? await r.text() : '';
-  } catch (_) {}
-  const $home = cheerio.load(homepageHtml || '');
-  const linkHrefs = new Set();
-  $home('a[href]').each((_, a) => {
-    const href = $home(a).attr('href');
-    if (!href) return;
-    try {
-      const abs = new URL(href, origin).href;
-      if (abs.startsWith(origin)) linkHrefs.add(abs);
-    } catch {}
-  });
-
-  // Heuristic important sections
-  const pick = (regex) => Array.from(linkHrefs).find(h => regex.test(h));
-  const docs = pick(/docs|documentation|developer|api/i);
-  const faq = pick(/faq/i);
-  const blog = pick(/blog|news/i);
-  const about = pick(/about|company|meist|yritys|tietoa/i);
-  const contact = pick(/contact|yhteys|ota-yhteytta|support/i);
-  const glossary = pick(/glossary|sanasto/i);
-
-  const sitemapXml = `${origin}/sitemap.xml`;
-
-  const lines = [];
-  lines.push(`# llms.txt - Guidance for AI crawlers`);
-  lines.push(`# Origin: ${origin}`);
-  lines.push('');
-  lines.push(`# Priority sources`);
-  if (docs) lines.push(`include: ${docs}`);
-  if (faq) lines.push(`include: ${faq}`);
-  if (blog) lines.push(`include: ${blog}`);
-  if (glossary) lines.push(`include: ${glossary}`);
-  if (about) lines.push(`include: ${about}`);
-  if (contact) lines.push(`include: ${contact}`);
-  lines.push('');
-  lines.push(`# Sitemaps`);
-  lines.push(`sitemap: ${sitemapXml}`);
-  lines.push('');
-  lines.push(`# Reading guidance`);
-  lines.push(`policy: summarize allowed; cite sources; respect robots directives`);
-  lines.push(`format: prefer HTML main content; ignore cookie banners and navigation`);
-  lines.push('');
-  lines.push(`# Licensing`);
-  lines.push(`license: CC BY 4.0 unless stated otherwise`);
-  lines.push('');
-  lines.push(`# Notes`);
-  lines.push(`note: prioritize up-to-date documentation and FAQs`);
-
-  return lines.join('\n');
-}
-
-// Optional Lighthouse runner
-async function runLighthouse(url) {
-  let chrome = null;
-  try {
-    chrome = await chromeLauncher.launch({ chromeFlags: ['--headless', '--no-sandbox'] });
-    const options = { logLevel: 'error', output: 'json', onlyCategories: ['performance', 'accessibility', 'seo'], port: chrome.port };
-    const runnerResult = await lighthouse(url, options);
-    const lhr = runnerResult.lhr;
-    return {
-      scores: {
-        performance: lhr.categories.performance?.score ?? null,
-        accessibility: lhr.categories.accessibility?.score ?? null,
-        seo: lhr.categories.seo?.score ?? null
-      },
-      metrics: {
-        lcp: lhr.audits['largest-contentful-paint']?.numericValue ?? null,
-        fcp: lhr.audits['first-contentful-paint']?.numericValue ?? null,
-        tbt: lhr.audits['total-blocking-time']?.numericValue ?? null,
-        cls: lhr.audits['cumulative-layout-shift']?.numericValue ?? null
-      },
-      link: `https://pagespeed.web.dev/report?url=${encodeURIComponent(url)}`
-    };
-  } catch (e) {
-    return { error: e.message };
-  } finally {
-    if (chrome) await chrome.kill();
-  }
-}
-
-// Health check endpoint
+// Health check endpoint (no dependencies needed)
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    server: 'SEO Audit Backend',
-    version: '1.0.0',
-    cache: cache.size
-  });
-});
-
-// Clear cache endpoint
-app.post('/api/cache/clear', (req, res) => {
-  cache.clear();
-  res.json({ message: 'Cache cleared' });
-});
-
-// Sitemap-based audit - analyzes entire site based on sitemap.xml
-app.post('/api/sitemap-audit', auditLimiter, async (req, res) => {
-  const { url, maxUrls } = req.body || {};
-  
-  if (!url) {
-    return res.status(400).json({ error: 'URL vaaditaan' });
-  }
-  
-  try {
-    const u = new URL(url);
-    if (!['http:', 'https:'].includes(u.protocol)) {
-      return res.status(400).json({ error: 'Virheellinen URL-protokolla' });
-    }
-  } catch (_) {
-    return res.status(400).json({ error: 'Virheellinen URL' });
-  }
-  
-  console.log(`🗺️ Starting sitemap audit for ${url}`);
-  
-  try {
-    // 1. Fetch sitemap.xml
-    const sitemapUrl = `${new URL(url).origin}/sitemap.xml`;
-    const sitemapResponse = await fetchWithTimeout(sitemapUrl, 15000);
-    
-    if (!sitemapResponse.ok) {
-      return res.status(400).json({ 
-        error: 'Sitemap not found', 
-        details: `${sitemapUrl} returned ${sitemapResponse.status}` 
-      });
-    }
-    
-    const sitemapText = await sitemapResponse.text();
-    const parser = new xml2js.Parser();
-    const sitemapData = await parser.parseStringPromise(sitemapText);
-    
-    // Extract URLs from sitemap
-    let urls = [];
-    if (sitemapData.urlset && sitemapData.urlset.url) {
-      urls = sitemapData.urlset.url.map(entry => {
-        return typeof entry.loc === 'string' ? entry.loc : entry.loc[0];
-      });
-    } else if (sitemapData.sitemapindex && sitemapData.sitemapindex.sitemap) {
-      // Handle sitemap index - fetch first few sitemaps
-      const sitemapUrls = sitemapData.sitemapindex.sitemap.slice(0, 3).map(entry => {
-        return typeof entry.loc === 'string' ? entry.loc : entry.loc[0];
-      });
-      
-      for (const smUrl of sitemapUrls) {
-        try {
-          const subResponse = await fetchWithTimeout(smUrl, 10000);
-          if (subResponse.ok) {
-            const subText = await subResponse.text();
-            const subData = await parser.parseStringPromise(subText);
-            if (subData.urlset && subData.urlset.url) {
-              const subUrls = subData.urlset.url.map(entry => {
-                return typeof entry.loc === 'string' ? entry.loc : entry.loc[0];
-              });
-              urls = urls.concat(subUrls);
-            }
-          }
-        } catch (e) {
-          console.warn(`Failed to fetch sub-sitemap ${smUrl}:`, e.message);
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        mode: 'optimized',
+        memory: {
+            used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+            total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
         }
-      }
+    });
+});
+
+// Main audit endpoint with timeout protection
+app.post('/api/audit', async (req, res) => {
+    const { url, options = {} } = req.body;
+    
+    if (!url) {
+        return res.status(400).json({ error: 'URL is required' });
     }
-    
-    if (!urls.length) {
-      return res.status(400).json({ 
-        error: 'No URLs found in sitemap', 
-        details: 'Sitemap exists but contains no URLs' 
-      });
-    }
-    
-    // Limit URLs (configurable via environment or request)
-    const defaultMax = process.env.SITEMAP_MAX_URLS ? parseInt(process.env.SITEMAP_MAX_URLS) : 50;
-    const requestedMax = maxUrls ? parseInt(maxUrls) : defaultMax;
-    const finalMax = Math.min(requestedMax, 200); // Hard limit of 200 for performance
-    const originalCount = urls.length;
-    
-    if (urls.length > finalMax) {
-      urls = urls.slice(0, finalMax);
-      console.log(`📄 Found ${originalCount} URLs in sitemap, analyzing first ${finalMax} (max: ${requestedMax}, hard limit: 200)`);
-    } else {
-      console.log(`📄 Found ${urls.length} URLs to analyze`);
-    }
-    
-    // 2. Analyze each URL
-    const results = {
-      totalUrls: urls.length,
-      totalUrlsInSitemap: originalCount,
-      schemaIssues: 0,
-      missingSchemas: 0,
-      avgScore: 0,
-      byContentType: {},
-      pages: []
-    };
-    
-    let browser;
+
+    // Validate URL
     try {
-      browser = await puppeteer.launch({ 
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
-      
-      let totalScore = 0;
-      
-      for (let i = 0; i < urls.length; i++) {
-        const pageUrl = urls[i];
-        console.log(`🔍 Analyzing ${i + 1}/${urls.length}: ${pageUrl}`);
-        
-        let pageData = {
-          url: pageUrl,
-          contentType: 'unknown',
-          title: null,
-          hasRecommendedSchema: false,
-          recommendedSchema: null,
-          currentSchema: null,
-          issues: [],
-          score: 0
-        };
-        
-        try {
-          const page = await browser.newPage();
-          await page.setUserAgent('SEO-Audit-Tool/1.0 (Sitemap-Crawler)');
-          
-          const response = await page.goto(pageUrl, { 
-            waitUntil: 'networkidle2',
-            timeout: 15000 
-          });
-          
-          if (!response.ok) {
-            pageData.issues.push(`HTTP ${response.status()}`);
-            await page.close();
-            results.pages.push(pageData);
-            continue;
-          }
-          
-          const html = await page.content();
-          const $ = cheerio.load(html);
-          
-          // Get basic page info
-          pageData.title = $('title').text() || null;
-          
-          // Detect content type
-          pageData.contentType = detectContentType(pageUrl, $);
-          
-          // Get current schema
-          pageData.currentSchema = getCurrentSchema($);
-          
-          // Get recommended schema
-          pageData.recommendedSchema = getRecommendedSchema(pageData.contentType, $);
-          
-          // Check if has recommended schema
-          pageData.hasRecommendedSchema = hasSchemaType(pageData.currentSchema, pageData.recommendedSchema);
-          
-          // Calculate score
-          let score = 100;
-          if (!pageData.hasRecommendedSchema && pageData.recommendedSchema) {
-            score -= 50;
-            pageData.issues.push(`Missing ${pageData.recommendedSchema} schema`);
-            results.missingSchemas++;
-          }
-          
-          // Check for schema validation issues
-          const schemaValidation = validatePageSchema($, pageData.recommendedSchema);
-          if (schemaValidation.issues.length > 0) {
-            score -= schemaValidation.issues.length * 10;
-            pageData.issues = pageData.issues.concat(schemaValidation.issues);
-            results.schemaIssues += schemaValidation.issues.length;
-          }
-          
-          pageData.score = Math.max(0, score);
-          totalScore += pageData.score;
-          
-          await page.close();
-          
-        } catch (error) {
-          pageData.issues.push(`Analysis failed: ${error.message}`);
-          console.warn(`Failed to analyze ${pageUrl}:`, error.message);
-        }
-        
-        // Group by content type
-        if (!results.byContentType[pageData.contentType]) {
-          results.byContentType[pageData.contentType] = [];
-        }
-        results.byContentType[pageData.contentType].push(pageData);
-        
-        results.pages.push(pageData);
-      }
-      
-      results.avgScore = Math.round(totalScore / urls.length);
-      
-      await browser.close();
-      
+        new URL(url);
     } catch (error) {
-      if (browser) await browser.close();
-      throw error;
+        return res.status(400).json({ error: 'Invalid URL format' });
     }
-    
-    console.log(`✅ Sitemap audit complete! Avg score: ${results.avgScore}%`);
-    res.json(results);
-    
-  } catch (error) {
-    console.error('❌ Sitemap audit error:', error);
-    res.status(500).json({ 
-      error: 'Sitemap audit failed', 
-      details: error.message 
-    });
-  }
-});
 
-// Content type detection based on URL patterns and page content
-function detectContentType(url, $) {
-  const urlLower = url.toLowerCase();
-  const title = $('title').text().toLowerCase();
-  const h1 = $('h1').first().text().toLowerCase();
-  const bodyText = $('body').text().toLowerCase();
-  
-  // Blog/Article patterns
-  if (urlLower.includes('/blog/') || urlLower.includes('/article/') || 
-      urlLower.includes('/news/') || urlLower.includes('/post/') ||
-      title.includes('blog') || h1.includes('article')) {
-    return 'article';
-  }
-  
-  // Product pages
-  if (urlLower.includes('/product/') || urlLower.includes('/item/') ||
-      urlLower.includes('/shop/') || urlLower.includes('/buy/') ||
-      bodyText.includes('add to cart') || bodyText.includes('price') ||
-      $('meta[property="product:price"]').length > 0) {
-    return 'product';
-  }
-  
-  // FAQ pages
-  if (urlLower.includes('/faq') || urlLower.includes('/questions') ||
-      title.includes('faq') || title.includes('questions') ||
-      $('h2, h3').filter((i, el) => $(el).text().includes('?')).length > 3) {
-    return 'faq';
-  }
-  
-  // Contact pages
-  if (urlLower.includes('/contact') || urlLower.includes('/yhteys') ||
-      title.includes('contact') || title.includes('yhteys') ||
-      $('input[type="email"]').length > 0 && $('textarea').length > 0) {
-    return 'contact';
-  }
-  
-  // About pages
-  if (urlLower.includes('/about') || urlLower.includes('/tietoa') ||
-      urlLower.includes('/meist') || title.includes('about') ||
-      title.includes('tietoa') || title.includes('meist')) {
-    return 'about';
-  }
-  
-  // Service pages
-  if (urlLower.includes('/service') || urlLower.includes('/palvelu') ||
-      title.includes('service') || title.includes('palvelu')) {
-    return 'service';
-  }
-  
-  // Event pages
-  if (urlLower.includes('/event') || urlLower.includes('/tapahtum') ||
-      $('time[datetime]').length > 0 || 
-      bodyText.includes('date:') || bodyText.includes('time:')) {
-    return 'event';
-  }
-  
-  // Job/Career pages
-  if (urlLower.includes('/job') || urlLower.includes('/career') ||
-      urlLower.includes('/recruitment') || urlLower.includes('/työ') ||
-      title.includes('job') || title.includes('career')) {
-    return 'job';
-  }
-  
-  // Homepage
-  if (url === new URL(url).origin || url === new URL(url).origin + '/' ||
-      urlLower.endsWith('/') && url.split('/').length <= 4) {
-    return 'homepage';
-  }
-  
-  // Default
-  return 'webpage';
-}
-
-// Get current schema types from page
-function getCurrentSchema($) {
-  const schemas = [];
-  
-  $('script[type="application/ld+json"]').each((i, elem) => {
+    const startTime = Date.now();
+    const timeoutMs = 45000; // 45 second timeout
+    
     try {
-      const content = $(elem).html();
-      const parsed = JSON.parse(content);
-      
-      const extractTypes = (obj) => {
-        if (!obj) return;
+        log.info(`Starting audit for: ${url}`);
         
-        if (obj['@type']) {
-          const type = Array.isArray(obj['@type']) ? obj['@type'] : [obj['@type']];
-          schemas.push(...type);
-        }
+        // Race between audit and timeout
+        const auditPromise = getOrchestrator().performLightweightAudit(url, options);
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Audit timeout')), timeoutMs)
+        );
         
-        if (Array.isArray(obj['@graph'])) {
-          obj['@graph'].forEach(extractTypes);
-        } else if (Array.isArray(obj)) {
-          obj.forEach(extractTypes);
-        }
-      };
-      
-      extractTypes(parsed);
-    } catch (e) {
-      // Invalid JSON-LD
+        const result = await Promise.race([auditPromise, timeoutPromise]);
+        
+        log.info(`Audit completed in ${Date.now() - startTime}ms`);
+        res.json(result);
+        
+    } catch (error) {
+        log.error(`Audit failed for ${url}:`, error.message);
+        
+        const executionTime = Date.now() - startTime;
+        res.status(500).json({
+            error: error.message === 'Audit timeout' ? 'Audit timed out' : 'Audit failed',
+            url,
+            executionTime,
+            timestamp: new Date().toISOString()
+        });
     }
-  });
-  
-  return schemas.join(', ') || null;
-}
+});
 
-// Get recommended schema based on content type
-function getRecommendedSchema(contentType, $) {
-  switch (contentType) {
-    case 'article':
-      return 'Article'; // or BlogPosting, NewsArticle
-    case 'product':
-      return 'Product';
-    case 'faq':
-      return 'FAQPage';
-    case 'contact':
-      return 'ContactPage';
-    case 'about':
-      return 'AboutPage';
-    case 'service':
-      return 'Service';
-    case 'event':
-      return 'Event';
-    case 'job':
-      return 'JobPosting';
-    case 'homepage':
-      return 'WebSite'; // or Organization
-    case 'webpage':
-    default:
-      return 'WebPage';
-  }
-}
+// Enhanced audit endpoint (loads heavy dependencies on demand)
+app.post('/api/audit/enhanced', async (req, res) => {
+    const { url, options = {} } = req.body;
+    
+    if (!url) {
+        return res.status(400).json({ error: 'URL is required' });
+    }
 
-// Check if page has the recommended schema type
-function hasSchemaType(currentSchema, recommendedSchema) {
-  if (!currentSchema || !recommendedSchema) return false;
-  
-  const current = currentSchema.toLowerCase().split(', ');
-  const recommended = recommendedSchema.toLowerCase();
-  
-  // Direct match
-  if (current.includes(recommended)) return true;
-  
-  // Alternative matches
-  if (recommended === 'article') {
-    return current.some(s => ['article', 'blogposting', 'newsarticle'].includes(s));
-  }
-  
-  if (recommended === 'webpage') {
-    return current.some(s => ['webpage', 'website'].includes(s));
-  }
-  
-  return false;
-}
-
-// Validate schema completeness for the page
-function validatePageSchema($, recommendedSchema) {
-  const issues = [];
-  
-  if (!recommendedSchema) return { issues };
-  
-  try {
-    $('script[type="application/ld+json"]').each((i, elem) => {
-      const content = $(elem).html();
-      const parsed = JSON.parse(content);
-      
-      const validateSchema = (obj, type) => {
-        if (!obj || !obj['@type']) return;
+    try {
+        log.info(`Starting enhanced audit for: ${url}`);
+        const result = await getOrchestrator().performEnhancedAudit(url, options);
+        res.json(result);
         
-        const objType = Array.isArray(obj['@type']) ? obj['@type'][0] : obj['@type'];
-        if (objType !== type) return;
-        
-        // Common validation rules
-        switch (type) {
-          case 'Article':
-          case 'BlogPosting':
-          case 'NewsArticle':
-            if (!obj.headline) issues.push('Article missing headline');
-            if (!obj.datePublished) issues.push('Article missing datePublished');
-            if (!obj.author) issues.push('Article missing author');
-            break;
-            
-          case 'Product':
-            if (!obj.name) issues.push('Product missing name');
-            if (!obj.offers) issues.push('Product missing offers');
-            break;
-            
-          case 'FAQPage':
-            if (!obj.mainEntity || !Array.isArray(obj.mainEntity)) {
-              issues.push('FAQPage missing mainEntity array');
-            } else {
-              obj.mainEntity.forEach((q, idx) => {
-                if (!q['@type'] || q['@type'] !== 'Question') {
-                  issues.push(`FAQ item ${idx + 1} not a Question`);
-                }
-                if (!q.acceptedAnswer) {
-                  issues.push(`FAQ item ${idx + 1} missing acceptedAnswer`);
-                }
-              });
-            }
-            break;
-            
-          case 'WebPage':
-            if (!obj.name && !obj.headline) issues.push('WebPage missing name/headline');
-            if (!obj.url) issues.push('WebPage missing url');
-            break;
-        }
-      };
-      
-      if (Array.isArray(parsed)) {
-        parsed.forEach(item => validateSchema(item, recommendedSchema));
-      } else if (parsed['@graph']) {
-        parsed['@graph'].forEach(item => validateSchema(item, recommendedSchema));
-      } else {
-        validateSchema(parsed, recommendedSchema);
-      }
+    } catch (error) {
+        log.error(`Enhanced audit failed for ${url}:`, error.message);
+        res.status(500).json({
+            error: 'Enhanced audit failed, falling back to basic audit',
+            fallback: await getOrchestrator().performLightweightAudit(url, options)
+        });
+    }
+});
+
+// Cache management
+let cache = new Map();
+app.post('/api/cache/clear', (req, res) => {
+    const before = cache.size;
+    cache.clear();
+    
+    // Force garbage collection if available
+    if (global.gc) {
+        global.gc();
+    }
+    
+    log.info(`Cache cleared: ${before} items removed`);
+    res.json({ 
+        status: 'cleared', 
+        itemsCleared: before,
+        memoryUsage: process.memoryUsage() 
     });
-  } catch (e) {
-    // Invalid JSON-LD structure
-  }
-  
-  return { issues };
-}
-
-// Generate llms.txt from a URL (no Puppeteer needed)
-app.post('/api/llms/generate', async (req, res) => {
-  try {
-    const { url } = req.body || {};
-    if (!url) return res.status(400).json({ error: 'URL vaaditaan' });
-    const u = new URL(url);
-    if (!['http:', 'https:'].includes(u.protocol)) return res.status(400).json({ error: 'Virheellinen URL-protokolla' });
-
-    const text = await generateLlmsTxt(url);
-    res.type('text/plain').send(text);
-  } catch (e) {
-    res.status(500).json({ error: 'llms.txt generointi epäonnistui', details: e.message });
-  }
 });
 
-app.listen(PORT, () => {
-  console.log(`
-╔════════════════════════════════════════╗
-║       SEO Audit Backend Server         ║
-╠════════════════════════════════════════╣
-║  Status: ✅ Running                    ║
-║  Port: ${PORT}                            ║
-║  URL: http://localhost:${PORT}            ║
-╠════════════════════════════════════════╣
-║  Endpoints:                            ║
-║  POST /api/audit     - Run audit       ║
-║  GET  /api/health    - Health check    ║
-║  POST /api/cache/clear - Clear cache   ║
-╚════════════════════════════════════════╝
+// Basic sitemap audit
+app.post('/api/sitemap-audit', async (req, res) => {
+    const { url, maxUrls = 10 } = req.body;
+    
+    if (!url) {
+        return res.status(400).json({ error: 'URL is required' });
+    }
 
-👉 Next: Open index.html in your browser
-  `);
+    try {
+        const fetch = require('node-fetch');
+        const xml2js = require('xml2js');
+        
+        // Simple sitemap parsing
+        const sitemapUrl = new URL('/sitemap.xml', url).href;
+        const response = await fetch(sitemapUrl, { timeout: 10000 });
+        
+        if (!response.ok) {
+            return res.status(404).json({ error: 'Sitemap not found' });
+        }
+        
+        const xml = await response.text();
+        const parser = new xml2js.Parser();
+        const result = await parser.parseStringPromise(xml);
+        
+        const urls = result.urlset?.url?.slice(0, maxUrls).map(u => u.loc[0]) || [];
+        
+        res.json({
+            sitemap: sitemapUrl,
+            totalUrls: urls.length,
+            urls,
+            message: 'Basic sitemap parsing - upgrade for full analysis'
+        });
+        
+    } catch (error) {
+        log.error(`Sitemap audit failed:`, error.message);
+        res.status(500).json({ error: 'Sitemap audit failed' });
+    }
 });
+
+// LLMS.txt generation
+app.post('/api/llms/generate', (req, res) => {
+    const { url } = req.body;
+    
+    if (!url) {
+        return res.status(400).json({ error: 'URL is required' });
+    }
+    
+    const baseUrl = new URL(url).origin;
+    const llmsContent = `# llms.txt - AI Training Guidelines
+# Generated by SEO Audit Tool
+
+# Allow training on public content
+User-agent: *
+Allow: /
+
+# Restrict sensitive areas
+User-agent: *
+Disallow: /admin/
+Disallow: /private/
+Disallow: /api/
+
+# Contact information
+Contact: admin@${new URL(url).hostname}
+
+# Training preferences
+Training-consent: conditional
+Training-restrictions: no-personal-data
+
+# Generated on ${new Date().toISOString()}`;
+
+    res.json({
+        content: llmsContent,
+        url: `${baseUrl}/llms.txt`,
+        instructions: 'Save this content to your website root as llms.txt'
+    });
+});
+
+// Serve main application
+app.get('/', (req, res) => {
+    res.sendFile('index.html', { root: __dirname });
+});
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+    log.error('Unhandled error:', error);
+    res.status(500).json({ 
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+});
+
+// 404 handler
+app.use('*', (req, res) => {
+    res.status(404).json({ error: 'Endpoint not found' });
+});
+
+// Start server
+const server = app.listen(PORT, () => {
+    console.log('╔════════════════════════════════════════╗');
+    console.log('║         SEO Audit Tool (Optimized)    ║');
+    console.log('╠════════════════════════════════════════╣');
+    console.log(`║  Status: ✅ Running                    ║`);
+    console.log(`║  Port: ${PORT}                            ║`);
+    console.log(`║  Mode: ${process.env.NODE_ENV || 'development'}                    ║`);
+    console.log('╠════════════════════════════════════════╣');
+    console.log('║  Optimizations:                        ║');
+    console.log('║  • Lazy loading of heavy dependencies  ║');
+    console.log('║  • Fast startup time                   ║');
+    console.log('║  • Graceful fallbacks                  ║');
+    console.log('║  • Cloud-optimized                     ║');
+    console.log('╚════════════════════════════════════════╝');
+    
+    log.info('Server started successfully');
+    log.info(`Health check: http://localhost:${PORT}/api/health`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    log.info('SIGTERM received, shutting down gracefully');
+    server.close(() => {
+        log.info('Server closed');
+        process.exit(0);
+    });
+});
+
+process.on('SIGINT', () => {
+    log.info('SIGINT received, shutting down gracefully');
+    server.close(() => {
+        log.info('Server closed');
+        process.exit(0);
+    });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    log.error('Uncaught exception:', error);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    log.error('Unhandled rejection at:', promise, 'reason:', reason);
+    process.exit(1);
+});
+
+module.exports = app;

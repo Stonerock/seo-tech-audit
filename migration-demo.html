@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Component Migration Demo | SEO Audit Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'profound-blue': '#0066FF',
+                        'profound-dark': '#0D1117',
+                        'profound-gray': '#21262D',
+                        'profound-border': '#30363D',
+                        'success': '#2EA043',
+                        'warning': '#FB8500',
+                        'danger': '#F85149'
+                    },
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
+                        'mono': ['JetBrains Mono', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-profound-dark text-white font-sans">
+
+    <!-- Theme Toggle for A/B Testing -->
+    <div class="fixed top-4 right-4 z-50">
+        <div class="bg-profound-gray rounded-lg p-2 border border-profound-border">
+            <label class="flex items-center space-x-2 text-sm">
+                <input type="checkbox" id="themeToggle" class="accent-profound-blue">
+                <span>New Design</span>
+            </label>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-6 py-8 max-w-6xl">
+        
+        <!-- Migration Demo Header -->
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold mb-4">Component Migration Demo</h1>
+            <p class="text-gray-400 mb-6">Toggle between old and new design systems</p>
+            <div class="bg-profound-blue/10 border border-profound-blue/20 rounded-lg p-4 max-w-2xl mx-auto">
+                <p class="text-sm text-profound-blue">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    This demo shows how to gradually migrate existing components to the new design system
+                </p>
+            </div>
+        </div>
+
+        <!-- Example: Current vs New Metric Cards -->
+        <section class="mb-16">
+            <h2 class="text-2xl font-bold mb-6">Metric Cards Comparison</h2>
+            
+            <!-- Current Style (Old) -->
+            <div id="oldMetricCards" class="mb-8">
+                <h3 class="text-lg font-medium mb-4 text-gray-400">Current Style (index.html)</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Old style metric cards -->
+                    <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 rounded-lg p-4 border border-violet-500/20">
+                        <div class="text-gray-400 text-xs uppercase mb-1">Performance</div>
+                        <div class="text-2xl font-bold text-green-400">87</div>
+                        <div class="text-xs text-gray-500 mt-2">Terminal style</div>
+                    </div>
+                    <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 rounded-lg p-4 border border-violet-500/20">
+                        <div class="text-gray-400 text-xs uppercase mb-1">Accessibility</div>
+                        <div class="text-2xl font-bold text-green-400">100</div>
+                        <div class="text-xs text-gray-500 mt-2">JetBrains Mono</div>
+                    </div>
+                    <div class="bg-gradient-to-r from-violet-600/20 to-purple-600/20 rounded-lg p-4 border border-violet-500/20">
+                        <div class="text-gray-400 text-xs uppercase mb-1">AI Readiness</div>
+                        <div class="text-2xl font-bold text-warning">65</div>
+                        <div class="text-xs text-gray-500 mt-2">Matrix theme</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- New Style -->
+            <div id="newMetricCards" class="hidden">
+                <h3 class="text-lg font-medium mb-4 text-gray-400">New Style (Components)</h3>
+                <div id="newMetricsContainer"></div>
+            </div>
+        </section>
+
+        <!-- Example: Executive Summary -->
+        <section class="mb-16">
+            <h2 class="text-2xl font-bold mb-6">Executive Summary Component</h2>
+            <div id="executiveSummaryContainer"></div>
+        </section>
+
+        <!-- Example: Priority Fixes -->
+        <section class="mb-16">
+            <h2 class="text-2xl font-bold mb-6">Priority Fixes Component</h2>
+            <div id="priorityFixesContainer"></div>
+        </section>
+
+        <!-- Migration Guide -->
+        <section class="mb-16">
+            <div class="bg-profound-gray rounded-2xl p-8 border border-profound-border">
+                <h2 class="text-2xl font-bold mb-6">Migration Strategy</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-bold mb-4 text-success">✅ Safe Migration Path</h3>
+                        <ul class="space-y-2 text-sm text-gray-300">
+                            <li><strong>Phase 1:</strong> Add component library alongside existing code</li>
+                            <li><strong>Phase 2:</strong> Create wrapper functions for existing data</li>
+                            <li><strong>Phase 3:</strong> A/B test new components with feature flags</li>
+                            <li><strong>Phase 4:</strong> Gradually replace old components</li>
+                            <li><strong>Phase 5:</strong> Remove legacy styles once stable</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-4 text-warning">⚠️ Migration Considerations</h3>
+                        <ul class="space-y-2 text-sm text-gray-300">
+                            <li>• Maintain all existing JavaScript functionality</li>
+                            <li>• Keep current API integration intact</li>
+                            <li>• Preserve keyboard shortcuts and interactions</li>
+                            <li>• Test thoroughly with real audit data</li>
+                            <li>• Consider user preferences (theme toggle)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mt-8 bg-profound-blue/10 border border-profound-blue/20 rounded-lg p-6">
+                    <h3 class="text-lg font-bold mb-4 text-profound-blue">Implementation Example</h3>
+                    <pre class="text-sm text-gray-300 font-mono bg-profound-dark rounded p-4 overflow-x-auto"><code>// 1. Load component library
+const components = new AttentionComponents();
+
+// 2. Transform existing data
+function upgradeMetricCards(existingData) {
+    const config = {
+        title: existingData.title,
+        score: existingData.score,
+        status: existingData.score >= 80 ? 'good' : 'warning'
+    };
+    return components.createMetricCard(config);
+}
+
+// 3. Feature flag for gradual rollout
+if (useNewDesign) {
+    container.innerHTML = components.createExecutiveSummary(data);
+} else {
+    container.innerHTML = renderOldSummary(data);
+}</code></pre>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Load Component Library -->
+    <script src="components/attention-components.js"></script>
+    
+    <script>
+        // Initialize components
+        const components = new AttentionComponents();
+        components.initializeCollapsibles();
+
+        // Demo data
+        const demoData = {
+            overallScore: 78,
+            metrics: [
+                {
+                    title: 'User Attention',
+                    subtitle: 'Speed & accessibility',
+                    score: 87,
+                    status: 'good',
+                    description: 'Performance optimized'
+                },
+                {
+                    title: 'Google Attention',
+                    subtitle: 'Indexing & metadata',
+                    score: 100,
+                    status: 'good',
+                    description: 'SEO fundamentals solid'
+                },
+                {
+                    title: 'AI Attention',
+                    subtitle: 'Citations & overviews',
+                    score: 65,
+                    status: 'warning',
+                    description: 'Needs optimization'
+                }
+            ],
+            businessImpact: [
+                '+12% user retention potential',
+                '3x more snippet inclusion',
+                'Ahead of 95% of competitors'
+            ],
+            quickWins: [
+                '74 images need alt text (2-3 hours)',
+                'Add FAQ schema (4-6 hours)',
+                'Create llms.txt (1 hour)'
+            ]
+        };
+
+        const priorityFixes = [
+            {
+                number: 1,
+                title: 'Add alt text to 74 images',
+                description: '→ users and bots will finally know what they\'re looking at.',
+                impact: '+12% accessibility, better retention',
+                aiBenefit: 'Images become quotable',
+                effort: '2-3 hours, bulk edit possible'
+            },
+            {
+                number: 2,
+                title: 'Add FAQ schema',
+                description: '→ AI loves FAQs more than most people do.',
+                impact: '3x more snippet inclusion',
+                aiBenefit: 'Direct voice search answers',
+                effort: '4-6 hours, content strategy needed'
+            },
+            {
+                number: 3,
+                title: 'Create llms.txt',
+                description: '→ roll out the welcome mat for AI crawlers.',
+                impact: 'Ahead of 95% of sites',
+                aiBenefit: 'Better crawler understanding',
+                effort: '1 hour, one-time setup'
+            }
+        ];
+
+        // Render new components
+        function renderNewComponents() {
+            // New metric cards
+            const metricsHtml = demoData.metrics.map(metric => 
+                components.createMetricCard(metric)
+            ).join('');
+            document.getElementById('newMetricsContainer').innerHTML = 
+                `<div class="grid grid-cols-1 md:grid-cols-3 gap-6">${metricsHtml}</div>`;
+
+            // Executive summary
+            document.getElementById('executiveSummaryContainer').innerHTML = 
+                components.createExecutiveSummary(demoData);
+
+            // Priority fixes
+            const fixesHtml = priorityFixes.map(fix => 
+                components.createPriorityFix(fix)
+            ).join('');
+            document.getElementById('priorityFixesContainer').innerHTML = 
+                `<div class="space-y-6">${fixesHtml}</div>`;
+        }
+
+        // Theme toggle functionality
+        document.getElementById('themeToggle').addEventListener('change', function(e) {
+            const useNewDesign = e.target.checked;
+            
+            if (useNewDesign) {
+                document.getElementById('oldMetricCards').classList.add('hidden');
+                document.getElementById('newMetricCards').classList.remove('hidden');
+                renderNewComponents();
+            } else {
+                document.getElementById('oldMetricCards').classList.remove('hidden');
+                document.getElementById('newMetricCards').classList.add('hidden');
+            }
+        });
+
+        // Initialize with new components
+        renderNewComponents();
+    </script>
+
+</body>
+</html>

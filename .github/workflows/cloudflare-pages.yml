@@ -1,0 +1,114 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main, master]
+    paths: 
+      - 'index.html'
+      - 'components/**'
+      - 'assets/**'
+      - 'wrangler.toml'
+      - '.github/workflows/cloudflare-pages.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'index.html' 
+      - 'components/**'
+      - 'assets/**'
+      - 'wrangler.toml'
+  workflow_dispatch:
+    inputs:
+      backend_url:
+        description: 'Backend URL to use for API calls'
+        required: false
+        default: 'https://seo-audit-backend-YOUR_PROJECT_ID.a.run.app'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy Frontend to Cloudflare Pages
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Install Wrangler CLI
+        run: npm install -g wrangler
+        
+      - name: Create build directory
+        run: mkdir -p dist
+        
+      - name: Copy frontend files
+        run: |
+          cp index.html dist/
+          [ -d components ] && cp -r components/ dist/ || echo "No components directory"
+          [ -d assets ] && cp -r assets/ dist/ || echo "No assets directory"
+          
+      - name: Configure backend URL
+        env:
+          BACKEND_URL: ${{ github.event.inputs.backend_url || secrets.BACKEND_URL || 'https://seo-audit-backend-YOUR_PROJECT_ID.a.run.app' }}
+        run: |
+          if [ "$BACKEND_URL" != "https://seo-audit-backend-YOUR_PROJECT_ID.a.run.app" ]; then
+            sed -i "s|http://localhost:3001|$BACKEND_URL|g" dist/index.html
+            sed -i "s|http://127.0.0.1:3001|$BACKEND_URL|g" dist/index.html
+            echo "✅ Updated API endpoints to: $BACKEND_URL"
+          else
+            echo "⚠️ Using placeholder backend URL"
+          fi
+          
+      - name: Update wrangler.toml with backend URL
+        env:
+          BACKEND_URL: ${{ github.event.inputs.backend_url || secrets.BACKEND_URL || 'https://seo-audit-backend-YOUR_PROJECT_ID.a.run.app' }}
+        run: |
+          if [ "$BACKEND_URL" != "https://seo-audit-backend-YOUR_PROJECT_ID.a.run.app" ]; then
+            sed -i "s|https://seo-audit-backend-YOUR_PROJECT_ID.a.run.app|$BACKEND_URL|g" wrangler.toml
+          fi
+          
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=seo-audit-tool
+          
+      - name: Add deployment comment (PR only)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const deploymentUrl = `https://seo-audit-tool.pages.dev`; // Update with your actual domain
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **Preview deployment ready!**\n\n📱 Frontend: ${deploymentUrl}\n🔧 Backend: ${{ env.BACKEND_URL }}\n\n*Deployed from commit ${context.sha.substring(0, 7)}*`
+            });
+            
+  # Health check after deployment
+  health-check:
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+      - name: Wait for deployment
+        run: sleep 30
+        
+      - name: Check frontend health
+        run: |
+          curl -f https://seo-audit-tool.pages.dev/ || exit 1
+          echo "✅ Frontend is responding"
+          
+      - name: Check backend health (if configured)
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+        if: env.BACKEND_URL != ''
+        run: |
+          curl -f $BACKEND_URL/api/health || exit 1
+          echo "✅ Backend is responding"

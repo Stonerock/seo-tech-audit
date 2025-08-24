@@ -1,15 +1,23 @@
 # SEO Audit Tool
 
-A comprehensive SEO and technical audit tool designed for digital agencies and developers. Because "attention is all you need" in AI, but apparently you also need proper schema markup, robots.txt, and the ability to explain to clients why their bounce rate is higher than their conversion rate.
+An enterprise-grade SEO and technical audit platform for digital agencies and developers. Because "attention is all you need" in AI, but apparently you also need proper schema markup, multi-bot analysis, and enterprise-grade infrastructure to handle client workloads.
 
 ## Features
 
-- **Single Page Analysis**: Complete SEO, accessibility, and performance audit (the works)
-- **Sitemap Crawling**: Analyze entire websites (up to 200 pages, because who has time for more?)
+### Core Analysis
+- **Single Page Analysis**: Complete SEO, accessibility, and performance audit
+- **Sitemap Crawling**: Analyze entire websites (up to 200 pages)
 - **Schema Validation**: Automatic content type detection and schema recommendations
-- **AI Readiness**: Optimization for Google AI Overviews and LLM crawlers (future-proofing included)
-- **Fix Priorities**: Actionable task list with effort estimates and impact analysis (no more "fix everything" requests)
+- **AI Readiness**: Optimization for Google AI Overviews and LLM crawlers
+- **Fix Priorities**: Actionable task list with effort estimates and impact analysis
 - **Multiple Export Formats**: CSV reports, action plans, and client-ready summaries
+
+### Enterprise Features
+- **Multi-Bot Analysis**: Comprehensive analysis of 11+ AI crawlers including GPTBot, Claude, Perplexity
+- **Audit Queue System**: Priority-based job management with concurrent processing
+- **Memory Monitoring**: Automatic resource management and cleanup
+- **Professional Logging**: Winston-based logging with multiple transports
+- **Modular Architecture**: Clean separation of concerns for maintainability
 
 ### AI Optimization Features ✨
 
@@ -19,7 +27,7 @@ Because the robots are taking over search results, might as well help them under
 - **Google AI Overview Optimization**: Featured snippet potential, entity recognition, Q&A structure analysis
 - **Content Structure Analysis**: AI-readable hierarchy, optimal paragraph lengths, content completeness scoring
 
-#### AI Surfaces Readiness Score (Flagship Feature)
+#### AI Surfaces Readiness Score
 
 Our proprietary scoring system evaluates content readiness for AI systems across 6 key dimensions:
 
@@ -40,8 +48,12 @@ Our proprietary scoring system evaluates content readiness for AI systems across
 ## Tech Stack
 
 - **Frontend**: Vanilla HTML/CSS/JS with Tailwind CSS
-- **Backend**: Node.js + Express
+- **Backend**: Node.js + Express (modular architecture)
 - **Analysis**: Puppeteer, Lighthouse, axe-core
+- **Queue System**: Priority-based job management with EventEmitter
+- **Monitoring**: Memory tracking with automatic cleanup
+- **Logging**: Winston with daily rotation and multiple transports
+- **Testing**: Jest with comprehensive unit and integration tests
 - **External APIs**: PageSpeed Insights, WebPageTest (optional)
 
 ## Quick Start
@@ -173,6 +185,48 @@ Content-Type: application/json
 POST /api/cache/clear
 ```
 
+### Enterprise Queue Endpoints
+
+```bash
+# Queue an audit
+POST /api/audit/queue
+Content-Type: application/json
+{
+  "url": "https://example.com",
+  "priority": 2
+}
+
+# Get queue status
+GET /api/audit/queue/status
+
+# Get job status
+GET /api/audit/job/{jobId}
+
+# Cancel job
+DELETE /api/audit/job/{jobId}
+
+# Batch queue
+POST /api/audit/batch/queue
+Content-Type: application/json
+{
+  "urls": ["https://example1.com", "https://example2.com"],
+  "priority": 3
+}
+```
+
+### System Monitoring
+
+```bash
+# Memory status
+GET /api/system/memory
+
+# Cache statistics
+GET /api/cache/stats
+
+# System health
+GET /api/health
+```
+
 ## Development
 
 ### Scripts
@@ -186,11 +240,26 @@ npm test        # Run tests (placeholder)
 ### Project Structure
 
 ```
-├── server.js           # Express server and audit logic
-├── index.html          # Frontend application
-├── package.json        # Dependencies and scripts
-├── .env.example        # Environment template
-└── README.md           # This file
+├── server.js                      # Main Express server
+├── index.html                     # Frontend application
+├── package.json                   # Dependencies and scripts
+├── .env.example                   # Environment template
+├── routes/
+│   └── audit.js                   # API route handlers
+├── services/
+│   ├── audit-orchestrator.js      # Main audit orchestration
+│   ├── audit-queue.js             # Enterprise queue system
+│   ├── bot-policy-analyzer.js     # Multi-bot analysis
+│   └── memory-monitor.js          # Memory monitoring and cleanup
+├── utils/
+│   ├── cache.js                   # LRU caching system
+│   ├── logger.js                  # Winston logging service
+│   ├── validation.js              # Input validation
+│   └── helpers.js                 # Utility functions
+├── tests/
+│   ├── unit/                      # Unit tests
+│   └── integration/               # Integration tests
+└── logs/                          # Log files (auto-generated)
 ```
 
 ### Adding New Audit Tests
@@ -253,6 +322,6 @@ MIT License - see LICENSE file for details
 
 ---
 
-**Built for digital agencies and SEO professionals who need more than "you should improve your SEO"**  
+**Built for digital agencies and SEO professionals who need enterprise-grade infrastructure**  
 
-Comprehensive auditing with actionable insights, because saying "add more keywords" isn't a strategy anymore. Now with AI optimization features, because apparently humans weren't complicated enough to optimize for.
+Comprehensive auditing with actionable insights and enterprise-grade reliability. Features modular architecture, comprehensive testing, and unique multi-bot analysis capabilities. Because "attention is all you need" in AI, but you also need the infrastructure to deliver it at scale.

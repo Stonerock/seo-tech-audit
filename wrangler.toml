@@ -1,0 +1,11 @@
+name = "seo-audit-tool"
+pages_build_output_dir = "dist"
+
+# Cloudflare Pages configuration for SEO Audit Tool
+# https://developers.cloudflare.com/pages/platform/build-configuration/
+
+[env.production]
+# Production environment
+
+[env.preview]
+# Preview/staging environment
