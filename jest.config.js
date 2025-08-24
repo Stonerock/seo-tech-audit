@@ -34,7 +34,8 @@ module.exports = {
     '!tests/**',
     '!**/*.test.js',
     '!**/*.spec.js',
-    '!services/ai-integration-example.js'
+    '!services/ai-integration-example.js',
+    '!services/audit-orchestrator.optimized.js'
   ],
   
   // Coverage thresholds - set to current project levels

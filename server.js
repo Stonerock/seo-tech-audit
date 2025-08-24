@@ -5,13 +5,64 @@ require('dotenv').config();
 
 // Define missing globals for Node.js environment compatibility
 if (typeof File === 'undefined') {
+    // Define ReadableStream if not available
+    if (typeof ReadableStream === 'undefined') {
+        global.ReadableStream = class ReadableStream {
+            constructor() {}
+        };
+    }
+    
     global.File = class File {
         constructor(fileBits, fileName, options = {}) {
             this.name = fileName;
             this.type = options.type || '';
-            this.size = fileBits.length || 0;
+            this.size = fileBits ? (Array.isArray(fileBits) ? fileBits.reduce((acc, bit) => acc + (bit?.size || bit?.length || 0), 0) : fileBits.length || 0) : 0;
+            this.lastModified = options.lastModified || Date.now();
+        }
+        
+        // Add common File methods that libraries might expect
+        slice(start, end, contentType) {
+            return new File([], `${this.name}-slice`, { type: contentType || this.type });
+        }
+        
+        stream() {
+            return new ReadableStream();
+        }
+        
+        arrayBuffer() {
+            return Promise.resolve(new ArrayBuffer(0));
+        }
+        
+        text() {
+            return Promise.resolve('');
         }
     };
+    
+    // Also define Blob if needed
+    if (typeof Blob === 'undefined') {
+        global.Blob = class Blob {
+            constructor(blobParts = [], options = {}) {
+                this.type = options.type || '';
+                this.size = blobParts ? blobParts.reduce((acc, part) => acc + (part?.size || part?.length || 0), 0) : 0;
+            }
+            
+            slice(start, end, contentType) {
+                return new Blob([], { type: contentType || this.type });
+            }
+            
+            stream() {
+                return new ReadableStream();
+            }
+            
+            arrayBuffer() {
+                return Promise.resolve(new ArrayBuffer(0));
+            }
+            
+            text() {
+                return Promise.resolve('');
+            }
+        };
+    }
 }
 
 const express = require('express');
