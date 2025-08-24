@@ -14,6 +14,9 @@ module.exports = {
   // Setup files
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   
+  // Global teardown for final cleanup
+  globalTeardown: '<rootDir>/tests/teardown.js',
+  
   // Transform ignore patterns for ESM modules
   transformIgnorePatterns: [
     'node_modules/(?!(franc|trigram-utils|n-gram|collapse-white-space)/)',

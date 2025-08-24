@@ -35,6 +35,7 @@ class AuditQueue extends EventEmitter {
     this.jobTimeout = options.jobTimeout || 60000; // 60 seconds
     this.retryAttempts = options.retryAttempts || 2;
     this.cleanupInterval = options.cleanupInterval || 300000; // 5 minutes
+    this.testMode = options.testMode || false; // Add test mode flag
     
     // Allow dependency injection for testing
     this.orchestratorFactory = options.orchestratorFactory || (() => new AuditOrchestrator());
@@ -68,11 +69,13 @@ class AuditQueue extends EventEmitter {
     this.processingInterval = null;
     this.cleanupIntervalRef = null;
     
-    // Start background processes
-    this.startProcessing();
-    this.startCleanup();
+    // Start background processes only if not in test mode
+    if (!this.testMode) {
+      this.startProcessing();
+      this.startCleanup();
+    }
     
-    console.log(`🚀 Audit Queue initialized - Max concurrent: ${this.maxConcurrent}`);
+    console.log(`🚀 Audit Queue initialized - Max concurrent: ${this.maxConcurrent}${this.testMode ? ' (TEST MODE)' : ''}`);
   }
 
   /**
@@ -232,9 +235,25 @@ class AuditQueue extends EventEmitter {
    * @private
    */
   startProcessing() {
+    if (this.testMode) {
+      console.log('⚠️ Test mode: Processing intervals disabled');
+      return;
+    }
+    
     this.processingInterval = setInterval(() => {
       this.processNextJob();
     }, 1000); // Check every second
+  }
+  
+  /**
+   * Manually process jobs (for testing)
+   */
+  async manualProcess() {
+    while (this.pending.size > 0 && this.processing.size < this.maxConcurrent) {
+      await this.processNextJob();
+      // Small delay to prevent tight loops
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
   }
 
   /**
@@ -269,10 +288,12 @@ class AuditQueue extends EventEmitter {
     console.log(`🔄 Starting job ${jobId} (attempt ${job.attempts}/${job.maxAttempts})`);
     this.emit('jobStarted', job);
 
+    let timeoutId = null;
+    
     try {
       // Set timeout for job
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Job timeout')), this.jobTimeout);
+        timeoutId = setTimeout(() => reject(new Error('Job timeout')), this.jobTimeout);
       });
 
       // Execute audit
@@ -280,6 +301,12 @@ class AuditQueue extends EventEmitter {
       const auditPromise = orchestrator.runFullAudit(job.url, job.options);
 
       const result = await Promise.race([auditPromise, timeoutPromise]);
+      
+      // Clear timeout since job completed successfully
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       
       // Job completed successfully
       job.status = JOB_STATUS.COMPLETED;
@@ -298,6 +325,12 @@ class AuditQueue extends EventEmitter {
       this.emit('jobCompleted', job);
 
     } catch (error) {
+      // Clear timeout on error
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      
       console.error(`❌ Job ${jobId} failed (attempt ${job.attempts}):`, error.message);
       
       // Check if we should retry
@@ -455,6 +488,11 @@ class AuditQueue extends EventEmitter {
    * @private
    */
   startCleanup() {
+    if (this.testMode) {
+      console.log('⚠️ Test mode: Cleanup intervals disabled');
+      return;
+    }
+    
     this.cleanupIntervalRef = setInterval(() => {
       this.cleanupOldJobs();
     }, this.cleanupInterval);
@@ -497,7 +535,7 @@ class AuditQueue extends EventEmitter {
   async shutdown() {
     console.log('🛑 Shutting down audit queue...');
     
-    // Clear intervals first
+    // Clear intervals first to prevent new processing
     if (this.processingInterval) {
       clearInterval(this.processingInterval);
       this.processingInterval = null;
@@ -518,9 +556,65 @@ class AuditQueue extends EventEmitter {
     
     if (this.processing.size > 0) {
       console.log(`⚠️ Shutdown timeout reached, ${this.processing.size} jobs still processing`);
+      
+      // Force cancel remaining jobs
+      for (const [jobId, job] of this.processing.entries()) {
+        job.status = JOB_STATUS.CANCELLED;
+        job.error = 'Shutdown timeout';
+        job.completedAt = new Date();
+        job.updatedAt = new Date();
+        
+        this.processing.delete(jobId);
+        this.failed.set(jobId, job);
+      }
     }
     
     console.log('✅ Audit queue shut down');
+  }
+  
+  /**
+   * Force shutdown without waiting for jobs to complete
+   */
+  forceShutdown() {
+    console.log('🛑 Force shutting down audit queue...');
+    
+    // Clear intervals immediately
+    if (this.processingInterval) {
+      clearInterval(this.processingInterval);
+      this.processingInterval = null;
+    }
+    
+    if (this.cleanupIntervalRef) {
+      clearInterval(this.cleanupIntervalRef);
+      this.cleanupIntervalRef = null;
+    }
+    
+    // Cancel all processing jobs immediately
+    for (const [jobId, job] of this.processing.entries()) {
+      job.status = JOB_STATUS.CANCELLED;
+      job.error = 'Force shutdown';
+      job.completedAt = new Date();
+      job.updatedAt = new Date();
+      
+      this.processing.delete(jobId);
+      this.failed.set(jobId, job);
+    }
+    
+    // Cancel all pending jobs immediately
+    for (const [jobId, job] of this.pending.entries()) {
+      job.status = JOB_STATUS.CANCELLED;
+      job.error = 'Force shutdown';
+      job.completedAt = new Date();
+      job.updatedAt = new Date();
+      
+      this.pending.delete(jobId);
+      this.failed.set(jobId, job);
+    }
+    
+    // Clear priority queues
+    Object.values(this.priorityQueues).forEach(queue => queue.length = 0);
+    
+    console.log('✅ Audit queue force shut down');
   }
 }
 
@@ -539,9 +633,31 @@ function getGlobalQueue(options = {}) {
   return globalQueue;
 }
 
+/**
+ * Clear the global queue instance (for testing)
+ */
+function clearGlobalQueue() {
+  if (globalQueue) {
+    globalQueue.forceShutdown();
+    globalQueue = null;
+  }
+}
+
+/**
+ * Shutdown the global queue gracefully
+ */
+async function shutdownGlobalQueue() {
+  if (globalQueue) {
+    await globalQueue.shutdown();
+    globalQueue = null;
+  }
+}
+
 module.exports = {
   AuditQueue,
   getGlobalQueue,
+  clearGlobalQueue,
+  shutdownGlobalQueue,
   JOB_STATUS,
   JOB_PRIORITY
 };

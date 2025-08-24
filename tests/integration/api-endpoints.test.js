@@ -56,6 +56,37 @@ jest.mock('../../services/audit-orchestrator', () => {
   }));
 });
 
+// Mock audit queue to prevent interval creation
+jest.mock('../../services/audit-queue', () => {
+  const mockQueue = {
+    addJob: jest.fn().mockResolvedValue({ id: 'test-job-1', status: 'pending' }),
+    getJob: jest.fn().mockResolvedValue({ id: 'test-job-1', status: 'completed' }),
+    getQueue: jest.fn().mockResolvedValue({ pending: 0, processing: 0, completed: 1 }),
+    cancelJob: jest.fn().mockResolvedValue(true),
+    shutdown: jest.fn().mockResolvedValue(),
+    processingInterval: null,
+    cleanupIntervalRef: null
+  };
+  
+  return {
+    AuditQueue: jest.fn(() => mockQueue),
+    getGlobalQueue: jest.fn(() => mockQueue),
+    JOB_STATUS: {
+      PENDING: 'pending',
+      PROCESSING: 'processing', 
+      COMPLETED: 'completed',
+      FAILED: 'failed',
+      CANCELLED: 'cancelled'
+    },
+    JOB_PRIORITY: {
+      LOW: 0,
+      NORMAL: 1,
+      HIGH: 2,
+      URGENT: 3
+    }
+  };
+});
+
 describe('API Integration Tests', () => {
   let app;
 
@@ -70,6 +101,12 @@ describe('API Integration Tests', () => {
     app.use((err, req, res, next) => {
       res.status(500).json({ error: err.message });
     });
+  });
+  
+  afterAll(async () => {
+    // Clean up any remaining intervals or timeouts
+    jest.clearAllTimers();
+    jest.useRealTimers();
   });
 
   describe('Basic API Tests', () => {

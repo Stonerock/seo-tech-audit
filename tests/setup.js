@@ -175,6 +175,52 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
+// Global audit queue cleanup
+let globalAuditQueue = null;
+
+// Function to get audit queue instance for cleanup
+const getAuditQueueForCleanup = () => {
+  try {
+    // Only import if not mocked
+    const auditQueueModule = require('../../services/audit-queue');
+    if (!jest.isMockFunction(auditQueueModule.getGlobalQueue)) {
+      return auditQueueModule.getGlobalQueue();
+    }
+  } catch (error) {
+    // Ignore if module is mocked or not available
+  }
+  return null;
+};
+
+// Global cleanup after all tests
+afterAll(async () => {
+  try {
+    // Clean up audit queue if it exists
+    const auditQueue = getAuditQueueForCleanup();
+    if (auditQueue && typeof auditQueue.shutdown === 'function') {
+      await auditQueue.shutdown();
+    }
+    
+    // Try to use the shutdown function from the module
+    const auditQueueModule = require('../../services/audit-queue');
+    if (auditQueueModule.shutdownGlobalQueue && typeof auditQueueModule.shutdownGlobalQueue === 'function') {
+      await auditQueueModule.shutdownGlobalQueue();
+    }
+  } catch (error) {
+    // Ignore cleanup errors (likely because modules are mocked)
+  }
+  
+  // Force clear any remaining intervals as a safety net
+  if (globalAuditQueue) {
+    if (globalAuditQueue.processingInterval) {
+      clearInterval(globalAuditQueue.processingInterval);
+    }
+    if (globalAuditQueue.cleanupIntervalRef) {
+      clearInterval(globalAuditQueue.cleanupIntervalRef);
+    }
+  }
+});
+
 // Global error handler for unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);

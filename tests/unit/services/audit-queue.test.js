@@ -17,27 +17,6 @@ describe('Services - AuditQueue', () => {
   let queue;
   let mockRunFullAudit;
 
-  beforeAll(() => {
-    // Use fake timers for better control over intervals
-    jest.useFakeTimers();
-  });
-
-  afterAll(() => {
-    // Restore real timers and force cleanup
-    jest.useRealTimers();
-    
-    // Clear any lingering intervals just in case
-    const intervalLimit = 10000; // Clear intervals up to ID 10000
-    for (let i = 1; i < intervalLimit; i++) {
-      clearInterval(i);
-    }
-    
-    // Force garbage collection if available
-    if (global.gc) {
-      global.gc();
-    }
-  });
-
   beforeEach(() => {
     // Clear all mocks first
     jest.clearAllMocks();
@@ -47,12 +26,13 @@ describe('Services - AuditQueue', () => {
     const mockInstance = new MockAuditOrchestrator();
     mockRunFullAudit = mockInstance.runFullAudit;
     
-    // Create a new queue for each test with fast intervals for testing
+    // Create a new queue for each test in test mode (no intervals)
     queue = new AuditQueue({
       maxConcurrent: 2,
       jobTimeout: 5000,
       retryAttempts: 1,
       cleanupInterval: 60000,
+      testMode: true, // Prevent intervals from starting
       orchestratorFactory: () => mockInstance
     });
   });
@@ -61,18 +41,9 @@ describe('Services - AuditQueue', () => {
     if (queue) {
       // Remove all listeners and shutdown properly
       queue.removeAllListeners();
-      await queue.shutdown();
-      
-      // Additional safety check - force clear any remaining intervals
-      const intervalIds = [queue.processingInterval, queue.cleanupIntervalRef].filter(Boolean);
-      intervalIds.forEach(id => clearInterval(id));
-      
+      await queue.forceShutdown();
       queue = null;
     }
-    
-    // Clear any remaining timers and force cleanup
-    jest.clearAllTimers();
-    jest.runOnlyPendingTimers();
   });
 
   describe('Job Management', () => {
@@ -204,7 +175,7 @@ describe('Services - AuditQueue', () => {
 
       const result = queue.addJob('https://example.com', {}, JOB_PRIORITY.NORMAL);
       
-      // Wait for job to be processed using fake timers
+      // Wait for job to be processed using manual processing
       const jobCompletedPromise = new Promise((resolve) => {
         queue.on('jobCompleted', (job) => {
           expect(job.id).toBe(result.jobId);
@@ -215,15 +186,14 @@ describe('Services - AuditQueue', () => {
         });
       });
       
-      // Advance timer to trigger job processing
-      jest.advanceTimersByTime(2000);
-      
+      // Manually trigger processing
+      await queue.manualProcess();
       await jobCompletedPromise;
 
       expect(queue.processing.size).toBe(0);
       expect(queue.completed.size).toBe(1);
       expect(queue.stats.completedJobs).toBe(1);
-    });
+    }, 10000);
 
     test('should handle job failure and retry', async () => {
       mockRunFullAudit
@@ -250,16 +220,15 @@ describe('Services - AuditQueue', () => {
         });
       });
       
-      // Advance timers to trigger job processing and retry
-      jest.advanceTimersByTime(5000); // Initial attempt
-      jest.advanceTimersByTime(5000); // Retry attempt
-      
+      // Manually trigger processing multiple times for retry
+      await queue.manualProcess();
+      await queue.manualProcess();
       await jobCompletedPromise;
 
       expect(retryEventFired).toBe(true);
       expect(completedEventFired).toBe(true);
       expect(queue.stats.completedJobs).toBeGreaterThanOrEqual(1);
-    }, 60000); // Increase timeout to 60 seconds
+    }, 10000);
 
     test('should fail job permanently after max retries', async () => {
       mockRunFullAudit.mockRejectedValue(new Error('Persistent error'));
@@ -276,23 +245,19 @@ describe('Services - AuditQueue', () => {
         });
       });
       
-      // Advance timers to trigger job processing and retries
-      jest.advanceTimersByTime(5000); // Initial attempt
-      jest.advanceTimersByTime(5000); // Retry attempt
-      
+      // Manually trigger processing multiple times
+      await queue.manualProcess();
+      await queue.manualProcess();
       await jobFailedPromise;
 
       expect(queue.failed.size).toBe(1);
       expect(queue.stats.failedJobs).toBe(1);
-    });
+    }, 10000);
 
     test('should respect concurrency limits', async () => {
-      // Use real timers for this test since we need actual delays
-      jest.useRealTimers();
-      
       // Mock a slow audit
       mockRunFullAudit.mockImplementation(() => 
-        new Promise(resolve => setTimeout(() => resolve({ url: 'test', tests: {} }), 1000))
+        new Promise(resolve => setTimeout(() => resolve({ url: 'test', tests: {} }), 100))
       );
 
       // Add more jobs than max concurrent
@@ -300,16 +265,16 @@ describe('Services - AuditQueue', () => {
       queue.addJob('https://example2.com', {}, JOB_PRIORITY.NORMAL);
       queue.addJob('https://example3.com', {}, JOB_PRIORITY.NORMAL);
 
-      // Wait a bit for processing to start
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Start processing
+      queue.manualProcess();
+      
+      // Check immediately - should not exceed concurrency
+      await new Promise(resolve => setTimeout(resolve, 50));
 
       const status = queue.getStatus();
       expect(status.queue.processing).toBeLessThanOrEqual(queue.maxConcurrent);
       expect(status.queue.pending).toBeGreaterThan(0);
-      
-      // Restore fake timers
-      jest.useFakeTimers();
-    });
+    }, 5000);
   });
 
   describe('Job Events', () => {
