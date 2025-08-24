@@ -1,7 +1,6 @@
 /**
  * Attention Analytics Component Library
  * Modern, reusable UI components for SEO audit interfaces
- * Inspired by Profound.co design principles
  */
 
 class AttentionComponents {
