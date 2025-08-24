@@ -90,7 +90,7 @@ jobs:
               body: `🚀 **Preview deployment ready!**\n\n📱 Frontend: ${deploymentUrl}\n🔧 Backend: ${{ env.BACKEND_URL }}\n\n*Deployed from commit ${context.sha.substring(0, 7)}*`
             });
             
-  # Health check after deployment
+  # Health check after deployment  
   health-check:
     needs: deploy
     runs-on: ubuntu-latest
