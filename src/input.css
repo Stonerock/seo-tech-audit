@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom CSS for SEO Audit Tool */
+@layer base {
+  body {
+    @apply bg-gray-900 text-white;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/5 backdrop-blur-sm border border-white/10;
+  }
+  
+  .test-result {
+    @apply transition-all duration-200 hover:bg-white/10;
+  }
+  
+  .status-good {
+    @apply text-green-400;
+  }
+  
+  .status-warning {
+    @apply text-yellow-400;
+  }
+  
+  .status-error {
+    @apply text-red-400;
+  }
+  
+  .scan-animation {
+    animation: scan 2s ease-in-out infinite;
+  }
+  
+  .loader {
+    @apply inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2;
+  }
+  
+  .executive-summary {
+    @apply bg-gradient-to-br from-blue-900/20 to-green-900/20 border border-blue-500/30;
+  }
+}
+
+@keyframes scan {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

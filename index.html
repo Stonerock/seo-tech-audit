@@ -6,32 +6,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Attention is all you need - Simple SEO & Technical Audit</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="dist/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'profound-blue': '#0066FF',
-                        'profound-dark': '#0D1117',
-                        'profound-gray': '#21262D',
-                        'profound-border': '#30363D',
-                        'success': '#2EA043',
-                        'warning': '#FB8500',
-                        'danger': '#F85149'
-                    },
-                    fontFamily: {
-                        'sans': ['Inter', 'system-ui', 'sans-serif'],
-                        'mono': ['JetBrains Mono', 'monospace']
-                    }
-                }
-            }
-        }
-    </script>
     <style>
         /* Modern Design System Styles */
         body {
@@ -1597,7 +1576,7 @@
         async function startBatchAudit() {
             const input = prompt('Enter URLs separated by comma or newline:');
             if (!input) return;
-            const urls = input.split(/\s|,/) .map(u => u.trim()).filter(Boolean);
+            const urls = input.split(/\s|,/).map(u => u.trim()).filter(Boolean);
             if (!urls.length) return;
             batchResults = [];
             document.getElementById('batchResultsSection').classList.remove('hidden');

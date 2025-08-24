@@ -9,8 +9,10 @@
     "test": "jest",
     "lint": "echo 'No linting configured for MVP' && exit 0",
     "deploy": "node scripts/deploy.js",
-    "build:css": "tailwindcss -i ./index.html -o ./dist/styles.css --minify",
-    "build:frontend": "mkdir -p dist && cp index.html dist/ && cp -r components dist/ && npm run build:css"
+    "build:css": "postcss src/input.css -o dist/styles.css --minify",
+    "build:frontend": "mkdir -p dist && cp index.html dist/ && cp -r components dist/ && npm run build:css",
+    "watch:css": "postcss src/input.css -o dist/styles.css --watch",
+    "build:prod": "npm run build:css && mkdir -p dist && cp index.html dist/ && cp -r components dist/ && cp _headers dist/"
   },
   "keywords": [
     "seo",
@@ -44,9 +46,11 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",
+    "cssnano": "^7.0.6",
     "jest": "^30.0.5",
     "nodemon": "^3.0.2",
     "postcss": "^8.5.6",
+    "postcss-cli": "^11.0.0",
     "supertest": "^7.1.4",
     "tailwindcss": "^3.4.17"
   }
