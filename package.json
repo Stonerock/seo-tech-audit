@@ -41,9 +41,7 @@
     "uuid": "^11.1.0",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "xml2js": "^0.6.2"
-  },
-  "frontendDependencies": {
+    "xml2js": "^0.6.2",
     "@radix-ui/react-progress": "^1.1.7",
     "@tailwindcss/typography": "^0.5.16",
     "class-variance-authority": "^0.7.0",
@@ -53,7 +51,7 @@
     "react-dom": "^18.2.0",
     "tailwind-merge": "^2.2.0"
   },
-  "frontendDevDependencies": {
+  "devDependencies": {
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
