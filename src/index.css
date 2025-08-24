@@ -1,0 +1,225 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Academic paper design system */
+@layer base {
+  :root {
+    /* Academic white paper palette */
+    --background: 0 0% 99%;         /* #FCFCFD - Clean white paper background */
+    --foreground: 220 15% 15%;      /* #1F2937 - Dark academic text */
+    --muted: 220 15% 96%;           /* #F8F9FA - Soft paper gray */
+    --muted-foreground: 220 15% 35%; /* #4B5563 - Darker muted text for better contrast */
+    --popover: 0 0% 100%;           /* Pure white for overlays */
+    --popover-foreground: 220 15% 15%;
+    --card: 0 0% 100%;              /* White card backgrounds */
+    --card-foreground: 220 15% 15%;
+    --border: 220 15% 92%;          /* #E5E7EB - Subtle paper borders */
+    --input: 220 15% 96%;           /* Light input background */
+    --primary: 215 85% 25%;         /* #1E3A8A - Deep academic blue */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 15% 96%;       /* Light secondary */
+    --secondary-foreground: 220 15% 15%;
+    --accent: 220 15% 96%;
+    --accent-foreground: 220 15% 15%;
+    --destructive: 0 75% 45%;       /* Academic red */
+    --destructive-foreground: 0 0% 100%;
+    --ring: 215 85% 25%;
+    --radius: 0.5rem;
+
+    /* Academic paper typography */
+    --font-sans: 'Libre Baskerville', 'Times New Roman', serif;
+    --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #FCFCFD; /* Clean white paper background */
+    color: #1F2937; /* Dark academic text */
+    font-family: 'Libre Baskerville', 'Times New Roman', serif;
+  }
+
+  /* Ensure root element has clean white background */
+  html {
+    background-color: #FCFCFD;
+  }
+  
+  #root {
+    min-height: 100vh;
+    background-color: #FCFCFD;
+  }
+
+  /* Academic typography hierarchy */
+  .academic-title {
+    @apply text-4xl md:text-6xl font-light tracking-tight text-foreground leading-tight;
+    font-variation-settings: 'wght' 300;
+  }
+  
+  .academic-subtitle {
+    @apply text-xl md:text-2xl font-light text-muted-foreground leading-relaxed;
+  }
+  
+  .academic-section-title {
+    @apply text-2xl md:text-3xl font-medium text-foreground mb-6 border-b border-border pb-3;
+  }
+  
+  .academic-subsection {
+    @apply text-lg font-medium text-foreground mb-4;
+  }
+  
+  .academic-body {
+    @apply text-base leading-7 text-muted-foreground;
+  }
+  
+  .academic-caption {
+    @apply text-sm text-muted font-mono;
+  }
+  
+  .academic-highlight {
+    @apply text-foreground font-medium bg-primary/10 px-3 py-1 rounded-md;
+  }
+
+  /* Research paper-inspired code styling */
+  code {
+    @apply text-primary bg-primary/10 px-2 py-1 rounded text-sm font-mono;
+  }
+  
+  pre {
+    @apply bg-secondary border border-border rounded-lg p-4 overflow-x-auto;
+  }
+  
+  pre code {
+    @apply bg-transparent p-0 text-foreground;
+  }
+
+  /* Academic paper card styling */
+  .paper-card {
+    @apply bg-card border border-border rounded-lg p-6 shadow-sm
+           hover:shadow-md transition-all duration-200;
+  }
+  
+  .paper-meta {
+    @apply bg-muted border border-border rounded-md p-3 text-sm;
+  }
+  
+  .metric-card {
+    @apply bg-card border border-border rounded-lg p-4 shadow-sm;
+  }
+  
+  .score-display {
+    @apply font-mono font-bold text-3xl text-primary;
+  }
+
+  /* Metric display - like research data */
+  .metric-display {
+    @apply bg-gradient-to-br from-primary/5 to-primary/10 
+           border border-primary/20 rounded-lg p-6;
+  }
+  
+  .metric-value {
+    @apply text-3xl font-bold text-foreground;
+    font-variation-settings: 'wght' 700;
+  }
+  
+  .metric-label {
+    @apply text-sm text-muted-foreground font-medium tracking-wide uppercase;
+  }
+
+  /* Academic status indicators */
+  .status-excellent {
+    @apply text-emerald-400 bg-emerald-500/10 border-emerald-500/20;
+  }
+  
+  .status-good {
+    @apply text-green-400 bg-green-500/10 border-green-500/20;
+  }
+  
+  .status-warning {
+    @apply text-amber-400 bg-amber-500/10 border-amber-500/20;
+  }
+  
+  .status-poor {
+    @apply text-red-400 bg-red-500/10 border-red-500/20;
+  }
+
+  /* Academic prose styling */
+  .academic-prose {
+    @apply prose prose-invert max-w-none;
+  }
+  
+  .academic-prose h1 {
+    @apply academic-title mb-8;
+  }
+  
+  .academic-prose h2 {
+    @apply academic-section-title;
+  }
+  
+  .academic-prose h3 {
+    @apply academic-subsection;
+  }
+  
+  .academic-prose p {
+    @apply academic-body mb-6;
+  }
+  
+  .academic-prose blockquote {
+    @apply border-l-4 border-primary/30 bg-primary/5 pl-6 pr-4 py-4 italic;
+  }
+
+  /* Loading states with academic feel */
+  .academic-skeleton {
+    @apply animate-pulse bg-muted/20 rounded;
+  }
+  
+  /* Focus states for accessibility */
+  .academic-focus {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background;
+  }
+}
+
+/* Custom scrollbar for academic feel */
+@layer utilities {
+  .academic-scrollbar::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+  
+  .academic-scrollbar::-webkit-scrollbar-track {
+    @apply bg-muted/10;
+  }
+  
+  .academic-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-muted/30 rounded-full hover:bg-muted/50;
+  }
+}
+
+/* Preserve your existing animations for smooth transition */
+@keyframes scan {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+/* Academic paper loading animation */
+@keyframes research {
+  0% { transform: translateX(-100%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+.research-enter {
+  animation: research 0.6s ease-out;
+}

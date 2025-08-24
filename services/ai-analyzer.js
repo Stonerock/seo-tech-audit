@@ -424,9 +424,30 @@ class AIContentAnalyzer {
     
     $('script[type="application/ld+json"]').each((i, elem) => {
       try {
-        const content = $(elem).html();
-        const parsed = JSON.parse(content);
-        
+        // Use text() to properly decode entities
+        const raw = ($(elem).text() || '').trim();
+        if (!raw) return;
+
+        // Clean comments and CDATA wrappers
+        let cleaned = raw
+          .replace(/<!--[\s\S]*?-->/g, '')
+          .replace(/\/\*<!\[CDATA\[\*\//g, '')
+          .replace(/\/\*\]\]>\*\//g, '')
+          .trim();
+
+        let parsed = null;
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch (_) {
+          const noTrailingCommas = cleaned.replace(/,\s*([}\]])/g, '$1');
+          try {
+            parsed = JSON.parse(noTrailingCommas);
+          } catch (_) {
+            const asArray = `[${noTrailingCommas.replace(/}\s*{/, '},{')}]`;
+            parsed = JSON.parse(asArray);
+          }
+        }
+
         const extractType = (obj) => {
           if (obj && obj['@type']) {
             const type = Array.isArray(obj['@type']) ? obj['@type'][0] : obj['@type'];

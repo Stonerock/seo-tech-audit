@@ -77,4 +77,29 @@ describe('Services - OptimizedAuditOrchestrator', () => {
             expect(typeof result.statusCode).toBe('number');
         }, 10000);
     });
+
+    describe('extractTypesFromJsonLd', () => {
+        test('should extract types from nested @graph and arrays', () => {
+            const types = [];
+            const data = {
+                '@context': 'https://schema.org',
+                '@graph': [
+                    { '@type': 'Organization' },
+                    { '@type': ['WebPage', 'CollectionPage'] },
+                    { '@type': 'BreadcrumbList', itemListElement: [{ '@type': 'ListItem' }] },
+                ]
+            };
+            orchestrator.extractTypesFromJsonLd(data, types);
+            expect(new Set(types)).toEqual(new Set(['Organization', 'WebPage', 'CollectionPage', 'BreadcrumbList', 'ListItem']));
+        });
+
+        test('should normalize prefixed and URL-based @type values', () => {
+            const types = [];
+            const data = {
+                '@type': ['schema:Article', 'https://schema.org/Product', 'http://schema.org/FAQPage']
+            };
+            orchestrator.extractTypesFromJsonLd(data, types);
+            expect(new Set(types)).toEqual(new Set(['Article', 'Product', 'FAQPage']));
+        });
+    });
 });

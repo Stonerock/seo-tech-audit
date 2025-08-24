@@ -12,7 +12,7 @@ RUN npm ci --only=production --no-optional && npm cache clean --force
 
 # Copy application code
 COPY server.js ./
-COPY services/audit-orchestrator.optimized.js ./services/audit-orchestrator.optimized.js
+COPY services/ ./services/
 COPY utils/ ./utils/
 
 # Create minimal utils structure if it doesn't exist

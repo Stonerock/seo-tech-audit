@@ -211,8 +211,32 @@ class AuditOrchestrator {
     // Extract JSON-LD schemas
     $('script[type="application/ld+json"]').each((i, elem) => {
       try {
-        const raw = $(elem).html();
-        const parsed = JSON.parse(raw);
+        // Use text() to avoid HTML-encoded quotes and entities
+        const raw = ($(elem).text() || '').trim();
+        if (!raw) return;
+
+        // Clean comments and CDATA wrappers
+        let cleaned = raw
+          .replace(/<!--[\s\S]*?-->/g, '')
+          .replace(/\/\*<!\[CDATA\[\*\//g, '')
+          .replace(/\/\*\]\]>\*\//g, '')
+          .trim();
+
+        let parsed = null;
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch (_) {
+          // Remove trailing commas
+          const noTrailingCommas = cleaned.replace(/,\s*([}\]])/g, '$1');
+          try {
+            parsed = JSON.parse(noTrailingCommas);
+          } catch (_) {
+            // Multiple root objects concatenated
+            const asArray = `[${noTrailingCommas.replace(/}\s*{/, '},{')}]`;
+            parsed = JSON.parse(asArray);
+          }
+        }
+
         if (Array.isArray(parsed)) {
           parsed.forEach(item => schemas.push(item));
         } else if (parsed && Array.isArray(parsed['@graph'])) {

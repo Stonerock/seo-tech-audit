@@ -1,38 +1,17 @@
 #!/bin/bash
 
 # Frontend deployment script for Cloudflare Pages
-# This script ensures reliable deployment when GitHub Actions fails
+# This script uses Vite to build and deploy the React + TypeScript app
 
 set -e
 
 echo "🚀 Starting Cloudflare Pages deployment..."
 
-# Create build directory
-echo "📦 Preparing build directory..."
-rm -rf dist
-mkdir -p dist
+# Build the project using Vite
+echo "🏗️  Building with Vite..."
+npm run build
 
-# Copy frontend files
-echo "📋 Copying frontend files..."
-cp index.html dist/
-
-# Copy components if they exist
-if [ -d "components" ]; then
-    cp -r components/ dist/
-    echo "✅ Components copied"
-else
-    echo "ℹ️  No components directory found"
-fi
-
-# Copy assets if they exist
-if [ -d "assets" ]; then
-    cp -r assets/ dist/
-    echo "✅ Assets copied"
-else
-    echo "ℹ️  No assets directory found"
-fi
-
-# Copy any additional static files
+# Copy any additional static files to dist
 if [ -f "_headers" ]; then
     cp _headers dist/
     echo "✅ Headers file copied"
@@ -43,12 +22,26 @@ if [ -f "_redirects" ]; then
     echo "✅ Redirects file copied"
 fi
 
-# Verify backend URL is correctly configured
-echo "🔍 Verifying backend configuration..."
-if grep -q "seo-audit-backend-458683085682.us-central1.run.app" dist/index.html; then
-    echo "✅ Backend URL configured correctly"
+# Verify build was successful
+echo "🔍 Verifying build..."
+if [ -f "dist/index.html" ]; then
+    echo "✅ Build successful - index.html found"
 else
-    echo "⚠️  Warning: Backend URL might not be configured properly"
+    echo "❌ Build failed - no index.html found"
+    exit 1
+fi
+
+# Check for JavaScript and CSS files
+if ls dist/assets/*.js > /dev/null 2>&1; then
+    echo "✅ JavaScript assets found"
+else
+    echo "⚠️  Warning: No JavaScript assets found"
+fi
+
+if ls dist/assets/*.css > /dev/null 2>&1; then
+    echo "✅ CSS assets found"  
+else
+    echo "⚠️  Warning: No CSS assets found"
 fi
 
 # Deploy to Cloudflare Pages

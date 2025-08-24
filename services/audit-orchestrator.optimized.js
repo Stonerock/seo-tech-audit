@@ -366,33 +366,76 @@ class OptimizedAuditOrchestrator {
             const types = [];
             const issues = [];
 
-            // Check JSON-LD
+            // Enhanced JSON-LD parsing (tolerant to real-world markup)
             jsonLdScripts.each((i, script) => {
                 try {
-                    const content = $(script).html();
-                    if (content) {
-                        const data = JSON.parse(content);
-                        if (data['@type']) {
-                            types.push(data['@type']);
-                        } else if (Array.isArray(data)) {
-                            data.forEach(item => {
-                                if (item['@type']) types.push(item['@type']);
-                            });
+                    // Use text() to decode HTML entities like &quot; that break JSON.parse
+                    const raw = ($(script).text() || '').trim();
+                    if (!raw) return;
+
+                    // Clean up content - strip HTML comments and CDATA wrappers
+                    let cleaned = raw
+                        .replace(/<!--[\s\S]*?-->/g, '')
+                        .replace(/\/\*<!\[CDATA\[\*\//g, '')
+                        .replace(/\/\*\]\]>\*\//g, '')
+                        .trim();
+
+                    // Try strict parse first
+                    let parsed = null;
+                    try {
+                        parsed = JSON.parse(cleaned);
+                    } catch (_) {
+                        // Fallbacks:
+                        // 1) Remove trailing commas
+                        const noTrailingCommas = cleaned.replace(/,\s*([}\]])/g, '$1');
+                        try {
+                            parsed = JSON.parse(noTrailingCommas);
+                        } catch (_) {
+                            // 2) Multiple root objects concatenated -> wrap as array
+                            const asArray = `[${noTrailingCommas.replace(/}\s*{/, '},{')}]`;
+                            try {
+                                parsed = JSON.parse(asArray);
+                            } catch (err) {
+                                issues.push(`Invalid JSON-LD syntax: ${err.message.substring(0, 80)}`);
+                            }
                         }
                     }
+
+                    if (parsed) {
+                        this.extractTypesFromJsonLd(parsed, types);
+                    }
                 } catch (e) {
-                    issues.push('Invalid JSON-LD syntax');
+                    issues.push(`JSON-LD processing error: ${e.message.substring(0, 80)}`);
                 }
             });
 
-            // Check microdata
+            // Enhanced microdata parsing
             microdataItems.each((i, el) => {
                 const itemType = $(el).attr('itemtype');
                 if (itemType) {
-                    const type = itemType.split('/').pop();
-                    types.push(type);
+                    // Extract type from schema.org URL
+                    const typeMatch = itemType.match(/schema\.org\/(.+)$/);
+                    if (typeMatch) {
+                        types.push(typeMatch[1]);
+                    } else {
+                        // Fallback for other formats
+                        const type = itemType.split('/').pop();
+                        if (type) types.push(type);
+                    }
                 }
             });
+
+            // Check for RDFa (less common but worth checking)
+            const rdfa = $('[typeof], [property]').length;
+            if (rdfa > 0) {
+                $('[typeof]').each((i, el) => {
+                    const typeOf = $(el).attr('typeof');
+                    if (typeOf && typeOf.includes('schema.org')) {
+                        const type = typeOf.split('/').pop();
+                        if (type) types.push(type);
+                    }
+                });
+            }
 
             // Basic validation
             if (types.length === 0) {
@@ -405,10 +448,42 @@ class OptimizedAuditOrchestrator {
                 jsonLdCount: jsonLdScripts.length,
                 microdataCount: microdataItems.length,
                 issues,
-                score: Math.max(0, 100 - (issues.length * 25))
+                score: Math.max(0, Math.min(100, types.length > 0 ? (types.length * 20) + (100 - (issues.length * 15)) : 0))
             };
         } catch (error) {
             throw new Error(`Schema check failed: ${error.message}`);
+        }
+    }
+
+    // Helper function to recursively extract types from JSON-LD data
+    extractTypesFromJsonLd(data, types) {
+        if (!data) return;
+
+        // Handle single object
+        if (typeof data === 'object' && !Array.isArray(data)) {
+            if (data['@type']) {
+                // Handle array of types
+                if (Array.isArray(data['@type'])) {
+                    data['@type'].forEach(type => {
+                        if (typeof type === 'string') {
+                            types.push(type.replace('schema:', '').replace('http://schema.org/', '').replace('https://schema.org/', ''));
+                        }
+                    });
+                } else if (typeof data['@type'] === 'string') {
+                    types.push(data['@type'].replace('schema:', '').replace('http://schema.org/', '').replace('https://schema.org/', ''));
+                }
+            }
+
+            // Recursively check nested objects, including @graph/mainEntity etc.
+            Object.values(data).forEach(value => {
+                if (typeof value === 'object') {
+                    this.extractTypesFromJsonLd(value, types);
+                }
+            });
+        }
+        // Handle array of objects
+        else if (Array.isArray(data)) {
+            data.forEach(item => this.extractTypesFromJsonLd(item, types));
         }
     }
 
