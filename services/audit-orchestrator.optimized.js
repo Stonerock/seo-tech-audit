@@ -303,28 +303,76 @@ class OptimizedAuditOrchestrator {
         }
     }
 
-    // Check for basic files (robots.txt, sitemap.xml)
+    // Check for basic files (robots.txt, sitemap variants, etc.)
     async checkBasicFiles(url) {
         const fetch = require('node-fetch');
         const baseUrl = new URL(url).origin;
 
         try {
-            const [robotsResponse, sitemapResponse, rssResponse, llmsResponse] = await Promise.allSettled([
+            // Check multiple sitemap variants - many sites use sitemap_index.xml or other formats
+            const sitemapVariants = [
+                'sitemap.xml',
+                'sitemap_index.xml', 
+                'sitemap-index.xml',
+                'sitemaps.xml',
+                'sitemap1.xml'
+            ];
+
+            const [robotsResponse, rssResponse, llmsResponse] = await Promise.allSettled([
                 fetch(`${baseUrl}/robots.txt`, { timeout: 5000 }),
-                fetch(`${baseUrl}/sitemap.xml`, { timeout: 5000 }),
                 fetch(`${baseUrl}/rss.xml`, { timeout: 5000 }),
                 fetch(`${baseUrl}/llms.txt`, { timeout: 5000 })
             ]);
+
+            // Check sitemap variants in parallel
+            const sitemapChecks = await Promise.allSettled(
+                sitemapVariants.map(variant => 
+                    fetch(`${baseUrl}/${variant}`, { timeout: 5000 })
+                )
+            );
+
+            // Find first successful sitemap
+            let sitemapResult = { exists: false, url: `${baseUrl}/sitemap.xml` };
+            for (let i = 0; i < sitemapChecks.length; i++) {
+                const check = sitemapChecks[i];
+                if (check.status === 'fulfilled' && check.value.ok) {
+                    sitemapResult = {
+                        exists: true,
+                        url: `${baseUrl}/${sitemapVariants[i]}`,
+                        variant: sitemapVariants[i]
+                    };
+                    break;
+                }
+            }
+
+            // Also check robots.txt for sitemap declarations
+            if (!sitemapResult.exists && robotsResponse.status === 'fulfilled' && robotsResponse.value.ok) {
+                try {
+                    const robotsText = await robotsResponse.value.text();
+                    const sitemapMatch = robotsText.match(/Sitemap:\s*(.+)/i);
+                    if (sitemapMatch) {
+                        const declaredSitemap = sitemapMatch[1].trim();
+                        const checkDeclared = await fetch(declaredSitemap, { timeout: 5000 });
+                        if (checkDeclared.ok) {
+                            sitemapResult = {
+                                exists: true,
+                                url: declaredSitemap,
+                                variant: 'declared-in-robots',
+                                source: 'robots.txt'
+                            };
+                        }
+                    }
+                } catch (error) {
+                    // Ignore robots.txt parsing errors
+                }
+            }
 
             return {
                 robots: {
                     exists: robotsResponse.status === 'fulfilled' && robotsResponse.value.ok,
                     url: `${baseUrl}/robots.txt`
                 },
-                sitemap: {
-                    exists: sitemapResponse.status === 'fulfilled' && sitemapResponse.value.ok,
-                    url: `${baseUrl}/sitemap.xml`
-                },
+                sitemap: sitemapResult,
                 rss: {
                     exists: rssResponse.status === 'fulfilled' && rssResponse.value.ok,
                     url: `${baseUrl}/rss.xml`
@@ -591,7 +639,7 @@ class OptimizedAuditOrchestrator {
 
     // Analyze schema fields present vs required for business type
     analyzeSchemaFields(schemaData, businessTypeResult, businessTypesConfig) {
-        const businessType = businessTypeResult.type;
+        const businessType = businessTypeResult;
         const requiredFields = businessTypesConfig[businessType]?.requiredFields || {};
         
         const presentFields = {};
@@ -600,6 +648,7 @@ class OptimizedAuditOrchestrator {
         // Check each required field
         Object.keys(requiredFields).forEach(fieldPath => {
             const isPresent = this.isSchemaFieldPresent(schemaData, fieldPath);
+            
             if (isPresent) {
                 presentFields[fieldPath] = requiredFields[fieldPath]; // Store point value
             } else {

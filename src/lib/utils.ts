@@ -30,18 +30,20 @@ export function getScoreColorClass(status: ScoreStatus): string {
 }
 
 /**
- * Calculate attention score - preserve your existing logic
+ * Calculate AI-era attention scores with focus on machine comprehension
  */
 export function calculateAttentionScores(results: any): AttentionScores {
   const seo = results?.tests?.seo?.score || 0;
   const performance = results?.tests?.performance?.score || 0;
   const accessibility = results?.tests?.accessibility?.score || 0;
-  const schema = results?.tests?.schema?.score || 0;
+  // Use AI-readiness score if available, fallback to legacy schema score
+  const schema = results?.tests?.schema?.aiReadinessScore || results?.tests?.schema?.score || 0;
   const files = calculateFilesScore(results?.tests?.files);
   
-  // Your existing weighted calculation
+  // AI-era weighted calculation: Schema intelligence takes priority
+  // Schema (40%) + SEO (25%) + Performance (20%) + Accessibility (10%) + Files (5%)
   const overall = Math.round(
-    (seo * 0.3 + performance * 0.25 + accessibility * 0.2 + schema * 0.15 + files * 0.1)
+    (schema * 0.4 + seo * 0.25 + performance * 0.2 + accessibility * 0.1 + files * 0.05)
   );
 
   return {
