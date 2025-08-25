@@ -1,4 +1,4 @@
-import { Brain, Search, FileText, Globe, Shield } from 'lucide-react';
+import { Brain, Search, FileText, Globe, Shield, Code } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { getScoreStatus } from '@/lib/utils';
@@ -48,6 +48,9 @@ export function AIAnalysisSection({ results }: AIAnalysisSectionProps) {
   const aiReadinessScore = calculateAIReadiness();
   const aiStatus = getScoreStatus(aiReadinessScore);
 
+  // JavaScript detection results
+  const jsAnalysis = results.tests.seo?.jsAnalysis;
+
   const aiFactors = [
     {
       title: 'Structured Data',
@@ -72,16 +75,16 @@ export function AIAnalysisSection({ results }: AIAnalysisSectionProps) {
       ] : ['Content analysis unavailable']
     },
     {
-      title: 'Crawlability',
+      title: 'Site-wide Files',
       icon: Globe,
       score: results.tests.files ? 
         (results.tests.files.robots.exists ? 50 : 0) + 
         (results.tests.files.sitemap.exists ? 50 : 0) : 0,
-      description: 'Technical foundations for AI crawler access',
+      description: 'Site-level technical files for AI crawler guidance',
       findings: results.tests.files ? [
-        `robots.txt: ${results.tests.files.robots.exists ? '✓ Present' : '✗ Missing'}`,
-        `sitemap.xml: ${results.tests.files.sitemap.exists ? '✓ Present' : '✗ Missing'}`,
-        `llms.txt: ${results.tests.files.llms?.exists ? '✓ Present' : '✗ Missing (optional)'}`
+        `robots.txt: ${results.tests.files.robots.exists ? '✓ Present' : '✗ Missing'} (site-wide)`,
+        `sitemap.xml: ${results.tests.files.sitemap.exists ? '✓ Present' : '✗ Missing'} (site-wide)`,
+        `llms.txt: ${results.tests.files.llms?.exists ? '✓ Present' : '✗ Missing (site-wide, optional)'}`
       ] : ['File analysis unavailable']
     }
   ];
@@ -121,11 +124,17 @@ export function AIAnalysisSection({ results }: AIAnalysisSectionProps) {
           <Progress value={aiReadinessScore} status={aiStatus} className="h-3 mb-3" />
           <div className="paper-meta">
             <p className="text-sm font-medium mb-1">Methodology</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground mb-2">
               Composite score based on structured data implementation (40%), 
               content hierarchy (30%), crawlability signals (20%), 
               and accessibility compliance (10%).
             </p>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-medium text-amber-700">⚠️ Static Analysis Only</span>
+              <span className="text-muted-foreground">
+                JavaScript-rendered content not analyzed
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -177,6 +186,79 @@ export function AIAnalysisSection({ results }: AIAnalysisSectionProps) {
         })}
       </div>
 
+      {/* JavaScript Detection Analysis */}
+      {jsAnalysis && (
+        <Card className="border-border/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Code className="w-5 h-5 text-amber-600" />
+              JavaScript Content Analysis
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Detection of client-side rendering requirements for accurate auditing
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`text-2xl font-bold ${
+                    jsAnalysis.confidence === 'high' ? 'text-red-600' : 
+                    jsAnalysis.confidence === 'medium' ? 'text-amber-600' : 
+                    'text-green-600'
+                  }`}>
+                    {jsAnalysis.score}
+                  </div>
+                  <div>
+                    <div className={`text-sm font-medium px-2 py-1 rounded ${
+                      jsAnalysis.confidence === 'high' ? 'bg-red-100 text-red-700' :
+                      jsAnalysis.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
+                      'bg-green-100 text-green-700'
+                    }`}>
+                      {jsAnalysis.confidence.toUpperCase()} JS NEED
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {jsAnalysis.needsJS ? 'JavaScript rendering recommended' : 'Static analysis sufficient'}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-sm">Detection Indicators</h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {Object.entries(jsAnalysis.indicators || {}).map(([key, value]) => (
+                      <div key={key} className={`p-2 rounded ${value ? 'bg-amber-50 text-amber-700' : 'bg-gray-50 text-gray-500'}`}>
+                        <div className="font-mono">{key.replace(/([A-Z])/g, ' $1').toLowerCase()}</div>
+                        <div className={`text-xs ${value ? 'text-amber-600' : 'text-gray-400'}`}>
+                          {value ? '✓ detected' : '✗ not found'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h4 className="font-semibold text-sm mb-2">Recommendation</h4>
+                <div className="p-3 bg-muted/30 rounded-md">
+                  <p className="text-sm text-muted-foreground">
+                    {jsAnalysis.recommendation}
+                  </p>
+                </div>
+                
+                {jsAnalysis.needsJS && (
+                  <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                    <p className="text-sm text-amber-700">
+                      <strong>Next Step:</strong> Use two-pass audit for comprehensive JavaScript analysis including dynamic content, client-side rendering, and interactive elements.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* AI Analysis Summary */}
       <Card>
         <CardHeader>
@@ -194,14 +276,14 @@ export function AIAnalysisSection({ results }: AIAnalysisSectionProps) {
                   {aiReadinessScore < 70 && results.tests.schema?.totalSchemas === 0 && (
                     <li>• Implement JSON-LD structured data for content type detection</li>
                   )}
-                  {results.tests.seo?.h1Count !== 1 && (
-                    <li>• Optimize heading hierarchy (exactly one H1, logical H2-H6 structure)</li>
+                  {results.tests.seo?.h1Count === 0 && (
+                    <li>• Add H1 heading for main content structure</li>
                   )}
                   {!results.tests.files?.robots?.exists && (
-                    <li>• Create robots.txt file to guide AI crawler behavior</li>
+                    <li>• Create robots.txt file at site root to guide AI crawler behavior</li>
                   )}
                   {!results.tests.files?.sitemap?.exists && (
-                    <li>• Generate XML sitemap for comprehensive content indexing</li>
+                    <li>• Generate XML sitemap at site root for comprehensive content indexing</li>
                   )}
                   {(results.tests.accessibility?.imagesWithoutAlt || 0) > 0 && (
                     <li>• Add descriptive alt text to {results.tests.accessibility?.imagesWithoutAlt || 0} images</li>

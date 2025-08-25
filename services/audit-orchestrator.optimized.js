@@ -10,6 +10,114 @@ class OptimizedAuditOrchestrator {
         this.aiAnalyzer = null;
         this.perfAnalyzer = null;
         this.botAnalyzer = null;
+        this.jsRenderer = null; // Lightweight JavaScript renderer
+        
+        // Performance optimization settings
+        this.requestCache = new Map();
+        this.maxResponseSize = 3 * 1024 * 1024; // 3MB limit (reduced)
+        this.requestTimeout = 4000; // 4 second timeout (more aggressive)
+        this.maxRedirects = 2; // Reduced redirects
+        this.cacheTimeout = 5 * 60 * 1000; // 5 minutes (longer cache)
+    }
+
+    // Shared HTML fetcher to avoid duplicate requests  
+    async getPageContent(url) {
+        const response = await this.makeOptimizedRequest(url);
+        if (response.status >= 400) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const cheerio = require('cheerio');
+        return {
+            html: response.body,
+            $: cheerio.load(response.body),
+            url: response.url,
+            status: response.status,
+            headers: response.headers
+        };
+    }
+
+    // Optimized HTTP client with caching and limits
+    async makeOptimizedRequest(url, options = {}) {
+        const cacheKey = `${url}-${JSON.stringify(options)}`;
+        
+        // Check cache first
+        if (this.requestCache.has(cacheKey)) {
+            const cached = this.requestCache.get(cacheKey);
+            if (Date.now() - cached.timestamp < this.cacheTimeout) {
+                return cached.data;
+            } else {
+                this.requestCache.delete(cacheKey);
+            }
+        }
+        
+        try {
+            const fetch = require('node-fetch');
+            const response = await fetch(url, {
+                timeout: this.requestTimeout,
+                redirect: 'manual',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; AttentionBot/1.0; +https://attentionisallyouneed.app)',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Cache-Control': 'no-cache',
+                    ...options.headers
+                },
+                ...options
+            });
+            
+            // Handle redirects efficiently
+            if (response.status >= 300 && response.status < 400 && options.followRedirects !== false) {
+                const location = response.headers.get('location');
+                if (location && this.maxRedirects > 0) {
+                    const absoluteUrl = new URL(location, url).href;
+                    return await this.makeOptimizedRequest(absoluteUrl, { 
+                        ...options, 
+                        followRedirects: (options.followRedirects || this.maxRedirects) - 1 
+                    });
+                }
+            }
+            
+            // Check content length before reading
+            const contentLength = response.headers.get('content-length');
+            if (contentLength && parseInt(contentLength) > this.maxResponseSize) {
+                throw new Error(`Response too large: ${contentLength} bytes`);
+            }
+            
+            const data = {
+                status: response.status,
+                statusText: response.statusText,
+                headers: Object.fromEntries(response.headers.entries()),
+                url: response.url,
+                body: null
+            };
+            
+            // Only read body if needed
+            if (options.includeBody !== false) {
+                const text = await response.text();
+                if (text.length > this.maxResponseSize) {
+                    data.body = text.substring(0, this.maxResponseSize);
+                    data.truncated = true;
+                } else {
+                    data.body = text;
+                }
+            }
+            
+            // Cache successful responses
+            if (response.status < 400) {
+                this.requestCache.set(cacheKey, {
+                    data,
+                    timestamp: Date.now()
+                });
+            }
+            
+            return data;
+        } catch (error) {
+            if (error.name === 'AbortError' || error.code === 'ECONNABORTED') {
+                throw new Error(`Request timeout after ${this.requestTimeout}ms`);
+            }
+            throw error;
+        }
     }
 
     // Lazy load heavy dependencies only when needed
@@ -37,12 +145,105 @@ class OptimizedAuditOrchestrator {
         return this.lighthouse;
     }
 
+    async loadJSRenderer() {
+        if (!this.jsRenderer) {
+            try {
+                const JavaScriptRenderer = require('./js-renderer');
+                this.jsRenderer = new JavaScriptRenderer();
+            } catch (error) {
+                logger.warn('JavaScript renderer not available:', error.message);
+                return null;
+            }
+        }
+        return this.jsRenderer;
+    }
+
+    // Detect if page likely needs JavaScript rendering based on static HTML
+    detectJavaScriptNeed($, html) {
+        const indicators = {
+            // Framework indicators
+            hasReact: !!(html.includes('data-reactroot') || html.includes('__REACT_DEVTOOLS_GLOBAL_HOOK__') || html.includes('React.')),
+            hasVue: !!(html.includes('data-server-rendered') || html.includes('Vue.') || html.includes('v-if') || html.includes('v-for')),
+            hasAngular: !!(html.includes('ng-app') || html.includes('ng-version') || html.includes('angular.') || html.includes('[ng-')),
+            hasNext: !!html.includes('__NEXT_DATA__'),
+            hasNuxt: !!html.includes('__NUXT__'),
+            
+            // SPA indicators
+            hasSPARoot: !!($('#root, #app, #__next').length > 0),
+            hasMinimalContent: $('body').text().trim().length < 500,
+            
+            // Script indicators  
+            hasExternalScripts: $('script[src]').length > 5,
+            hasInlineScripts: $('script:not([src])').length > 3,
+            hasModuleScripts: $('script[type="module"]').length > 0,
+            
+            // Dynamic content indicators
+            hasLoadingStates: !!(html.includes('loading') || html.includes('spinner') || html.includes('skeleton')),
+            hasAsyncAttributes: $('[data-async], [data-fetch], [data-lazy]').length > 0,
+            hasPlaceholders: $('.placeholder, [class*="placeholder"]').length > 0,
+            
+            // Meta indicators
+            hasJSRequiredMeta: !!$('noscript').text().includes('JavaScript'),
+            hasPreloadJS: $('link[rel="preload"][as="script"]').length > 0
+        };
+
+        // Calculate confidence score
+        let jsNeedScore = 0;
+        
+        // Framework detection (high weight)
+        if (indicators.hasReact || indicators.hasVue || indicators.hasAngular) jsNeedScore += 40;
+        if (indicators.hasNext || indicators.hasNuxt) jsNeedScore += 35;
+        
+        // SPA indicators (high weight)
+        if (indicators.hasSPARoot && indicators.hasMinimalContent) jsNeedScore += 30;
+        
+        // Script density (medium weight)
+        if (indicators.hasExternalScripts) jsNeedScore += 20;
+        if (indicators.hasModuleScripts) jsNeedScore += 15;
+        if (indicators.hasInlineScripts) jsNeedScore += 10;
+        
+        // Dynamic content indicators (medium weight)
+        if (indicators.hasLoadingStates) jsNeedScore += 15;
+        if (indicators.hasAsyncAttributes) jsNeedScore += 10;
+        if (indicators.hasPlaceholders) jsNeedScore += 10;
+        
+        // Meta indicators (low weight)
+        if (indicators.hasJSRequiredMeta) jsNeedScore += 10;
+        if (indicators.hasPreloadJS) jsNeedScore += 5;
+
+        const confidence = jsNeedScore >= 50 ? 'high' : jsNeedScore >= 25 ? 'medium' : 'low';
+        const needsJS = jsNeedScore >= 25;
+
+        return {
+            needsJS,
+            confidence,
+            score: Math.min(jsNeedScore, 100),
+            indicators,
+            recommendation: this.getJSRecommendation(jsNeedScore, indicators)
+        };
+    }
+
+    getJSRecommendation(score, indicators) {
+        if (score >= 50) {
+            return 'JavaScript rendering strongly recommended - detected modern framework or SPA';
+        } else if (score >= 25) {
+            return 'JavaScript rendering may improve audit accuracy - detected dynamic content';
+        } else {
+            return 'Static HTML analysis sufficient - minimal JavaScript detected';
+        }
+    }
+
     // Fast, lightweight audit that works without heavy dependencies
     async performLightweightAudit(url, options = {}) {
         const startTime = Date.now();
         logger.info(`Starting lightweight audit for: ${url}`);
 
         try {
+            // Global timeout for entire audit (never exceed 15 seconds)
+            const auditTimeout = setTimeout(() => {
+                throw new Error('Audit timeout exceeded 15 seconds');
+            }, 15000);
+
             // Parallel execution of lightweight checks
             const checks = [
                 this.checkBasicSEO(url),
@@ -53,13 +254,17 @@ class OptimizedAuditOrchestrator {
                 this.checkBasicSchema(url)
             ];
 
-            // Add Lighthouse check if requested
-            if (options.includeLighthouse) {
+            // Add Lighthouse check if requested (but skip if too slow)
+            if (options.includeLighthouse && !options.fastMode) {
                 logger.info('Including Lighthouse performance audit');
                 checks.push(this.checkLighthousePerformance(url));
             }
 
+            // Add AEO (Answer Engine Optimization) analysis
+            checks.push(this.checkAEOReadiness(url));
+
             const results = await Promise.allSettled(checks);
+            clearTimeout(auditTimeout);
 
             const auditResults = {
                 url,
@@ -77,9 +282,18 @@ class OptimizedAuditOrchestrator {
             };
 
             // Add lighthouse results if available
-            if (options.includeLighthouse && results[6]) {
-                auditResults.tests.lighthouse = results[6].status === 'fulfilled' ? 
-                    results[6].value : { error: results[6].reason?.message };
+            const lighthouseIndex = options.includeLighthouse ? 6 : -1;
+            const aeoIndex = options.includeLighthouse ? 7 : 6;
+            
+            if (options.includeLighthouse && results[lighthouseIndex]) {
+                auditResults.tests.lighthouse = results[lighthouseIndex].status === 'fulfilled' ? 
+                    results[lighthouseIndex].value : { error: results[lighthouseIndex].reason?.message };
+            }
+
+            // Add AEO results
+            if (results[aeoIndex]) {
+                auditResults.tests.aeo = results[aeoIndex].status === 'fulfilled' ? 
+                    results[aeoIndex].value : { error: results[aeoIndex].reason?.message };
             }
 
             logger.info(`${auditResults.mode} audit completed in ${auditResults.executionTime}ms`);
@@ -91,32 +305,193 @@ class OptimizedAuditOrchestrator {
         }
     }
 
-    // Basic SEO check using only HTTP requests and cheerio
+    // Two-pass audit: Static first, then JavaScript rendering if needed
+    async performTwoPassAudit(url, options = {}) {
+        const startTime = Date.now();
+        logger.info(`Starting two-pass audit for: ${url}`);
+
+        try {
+            // Phase 1: Static analysis (fast)
+            logger.info('Phase 1: Static HTML analysis');
+            const staticResults = await this.performLightweightAudit(url, { ...options, phase: 'static' });
+            
+            // Check if JavaScript rendering is needed
+            const jsAnalysis = staticResults.tests.seo?.jsAnalysis;
+            const shouldUseJS = jsAnalysis?.needsJS && jsAnalysis.confidence !== 'low';
+            
+            logger.info(`JavaScript detection: needsJS=${jsAnalysis?.needsJS}, confidence=${jsAnalysis?.confidence}`);
+            logger.info(`Recommendation: ${jsAnalysis?.recommendation}`);
+
+            // Phase 2: JavaScript rendering (if needed and enabled)
+            let jsResults = null;
+            if (shouldUseJS && options.enableJS !== false) {
+                logger.info('Phase 2: JavaScript rendering analysis');
+                
+                const jsRenderer = await this.loadJSRenderer();
+                if (jsRenderer) {
+                    try {
+                        const renderResult = await jsRenderer.renderPage(url);
+                        
+                        // Re-analyze with rendered content
+                        const cheerio = require('cheerio');
+                        const $js = cheerio.load(renderResult.html);
+                        
+                        // Run key analyses on JS-rendered content
+                        jsResults = {
+                            seo: await this.analyzeRenderedSEO($js, renderResult.html, url),
+                            accessibility: await this.analyzeRenderedAccessibility($js),
+                            schema: await this.analyzeRenderedSchema($js),
+                            metrics: renderResult.metrics,
+                            jsMetrics: renderResult.jsMetrics
+                        };
+                        
+                        logger.info('JavaScript rendering completed successfully');
+                    } catch (jsError) {
+                        logger.warn('JavaScript rendering failed, using static results:', jsError.message);
+                        jsResults = { error: jsError.message, fallbackToStatic: true };
+                    }
+                } else {
+                    logger.warn('JavaScript renderer not available, using static results only');
+                    jsResults = { error: 'JavaScript renderer not available', fallbackToStatic: true };
+                }
+            }
+
+            // Combine results
+            const combinedResults = {
+                ...staticResults,
+                timestamp: new Date().toISOString(),
+                executionTime: Date.now() - startTime,
+                mode: jsResults ? 'two-pass' : 'static-only',
+                phases: {
+                    static: {
+                        completed: true,
+                        executionTime: staticResults.executionTime
+                    },
+                    javascript: jsResults ? {
+                        completed: !jsResults.error,
+                        attempted: shouldUseJS,
+                        recommendation: jsAnalysis?.recommendation,
+                        error: jsResults.error,
+                        executionTime: jsResults.error ? 0 : Date.now() - startTime - staticResults.executionTime
+                    } : {
+                        completed: false,
+                        attempted: false,
+                        skipped: !shouldUseJS ? 'not needed' : 'disabled'
+                    }
+                }
+            };
+
+            // Merge JS results if available
+            if (jsResults && !jsResults.error) {
+                combinedResults.tests.jsRendered = jsResults;
+                
+                // Update confidence indicators
+                combinedResults.tests.seo.analysisMethod = 'hybrid';
+                if (jsResults.seo) {
+                    combinedResults.tests.seo.jsEnhanced = true;
+                    combinedResults.tests.seo.differences = this.compareStaticVsJS(staticResults.tests.seo, jsResults.seo);
+                }
+            }
+
+            logger.info(`Two-pass audit completed in ${combinedResults.executionTime}ms`);
+            return combinedResults;
+
+        } catch (error) {
+            logger.error('Two-pass audit failed:', error);
+            throw error;
+        }
+    }
+
+    // Analyze SEO on JavaScript-rendered content
+    async analyzeRenderedSEO($, html, url) {
+        const title = $('title').text().trim();
+        const description = $('meta[name="description"]').attr('content') || '';
+        const h1Count = $('h1').length;
+        const h2Count = $('h2').length;
+        const wordCount = $('body').text().split(/\\s+/).filter(word => word.length > 0).length;
+        
+        return {
+            title,
+            description,
+            h1Count,
+            h2Count,
+            wordCount,
+            method: 'js-rendered'
+        };
+    }
+
+    // Analyze accessibility on JavaScript-rendered content
+    async analyzeRenderedAccessibility($) {
+        const images = $('img').length;
+        const imagesWithoutAlt = $('img:not([alt])').length;
+        const hasLang = $('html[lang]').length > 0;
+        
+        return {
+            images,
+            imagesWithoutAlt,
+            hasLang,
+            method: 'js-rendered'
+        };
+    }
+
+    // Analyze schema on JavaScript-rendered content
+    async analyzeRenderedSchema($) {
+        const jsonLdScripts = $('script[type="application/ld+json"]');
+        const totalSchemas = jsonLdScripts.length;
+        
+        return {
+            totalSchemas,
+            jsonLdCount: totalSchemas,
+            method: 'js-rendered'
+        };
+    }
+
+    // Compare static vs JavaScript-rendered results
+    compareStaticVsJS(staticSEO, jsSEO) {
+        const differences = [];
+        
+        if (staticSEO.title !== jsSEO.title) {
+            differences.push({
+                field: 'title',
+                static: staticSEO.title,
+                jsRendered: jsSEO.title,
+                significance: 'high'
+            });
+        }
+        
+        if (staticSEO.h1Count !== jsSEO.h1Count) {
+            differences.push({
+                field: 'h1Count',
+                static: staticSEO.h1Count,
+                jsRendered: jsSEO.h1Count,
+                significance: 'medium'
+            });
+        }
+        
+        if (Math.abs(staticSEO.wordCount - jsSEO.wordCount) > 100) {
+            differences.push({
+                field: 'wordCount',
+                static: staticSEO.wordCount,
+                jsRendered: jsSEO.wordCount,
+                significance: 'high'
+            });
+        }
+        
+        return differences;
+    }
+
+    // Basic SEO check using optimized HTTP client
     async checkBasicSEO(url) {
-        const fetch = require('node-fetch');
         const cheerio = require('cheerio');
 
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-            const response = await fetch(url, { 
-                signal: controller.signal,
-                timeout: 10000,
-                headers: { 
-                    'User-Agent': 'SEO-Audit-Tool/2.1.0',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-                },
-                size: 5 * 1024 * 1024 // 5MB limit
-            });
+            const response = await this.makeOptimizedRequest(url);
             
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
+            if (response.status >= 400) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
 
-            const html = await response.text();
+            const html = response.body;
             const $ = cheerio.load(html);
 
             const title = $('title').text().trim();
@@ -133,39 +508,84 @@ class OptimizedAuditOrchestrator {
 
             // Calculate SEO score based on best practices
             let score = 0;
+            const scoreBreakdown = [];
             
             // Title (25 points)
+            let titleScore = 0;
             if (title.length > 0) {
-                if (title.length >= 30 && title.length <= 60) score += 25;
-                else if (title.length >= 20 && title.length <= 70) score += 20;
-                else if (title.length > 0) score += 10;
+                if (title.length >= 30 && title.length <= 60) {
+                    titleScore = 25;
+                    scoreBreakdown.push({ factor: 'Title (optimal length)', points: 25, earned: 25 });
+                } else if (title.length >= 20 && title.length <= 70) {
+                    titleScore = 20;
+                    scoreBreakdown.push({ factor: 'Title (good length)', points: 25, earned: 20 });
+                } else {
+                    titleScore = 10;
+                    scoreBreakdown.push({ factor: 'Title (present but not optimal)', points: 25, earned: 10 });
+                }
+                score += titleScore;
+            } else {
+                scoreBreakdown.push({ factor: 'Title', points: 25, earned: 0 });
             }
             
-            // Meta description (20 points)
+            // Meta description (20 points) - Any description is good
             if (description.length > 0) {
-                if (description.length >= 120 && description.length <= 160) score += 20;
-                else if (description.length >= 100 && description.length <= 180) score += 15;
-                else if (description.length > 0) score += 10;
+                score += 20;
+                scoreBreakdown.push({ factor: 'Meta description', points: 20, earned: 20 });
+            } else {
+                scoreBreakdown.push({ factor: 'Meta description', points: 20, earned: 0 });
             }
             
-            // H1 structure (20 points)
-            if (h1Count === 1) score += 20;
-            else if (h1Count > 1) score += 10;
+            // H1 structure (20 points) - Modern HTML5 allows multiple H1s
+            if (h1Count > 0) {
+                score += 20;
+                scoreBreakdown.push({ factor: 'H1 heading structure', points: 20, earned: 20 });
+            } else {
+                scoreBreakdown.push({ factor: 'H1 heading structure', points: 20, earned: 0 });
+            }
             
             // H2 structure (10 points)
-            if (h2Count > 0) score += 10;
+            if (h2Count > 0) {
+                score += 10;
+                scoreBreakdown.push({ factor: 'H2 subheading structure', points: 10, earned: 10 });
+            } else {
+                scoreBreakdown.push({ factor: 'H2 subheading structure', points: 10, earned: 0 });
+            }
             
             // HTTPS (10 points)
-            if (https) score += 10;
+            if (https) {
+                score += 10;
+                scoreBreakdown.push({ factor: 'HTTPS encryption', points: 10, earned: 10 });
+            } else {
+                scoreBreakdown.push({ factor: 'HTTPS encryption', points: 10, earned: 0 });
+            }
             
             // Internal linking (5 points)
-            if (internalLinks > 0) score += 5;
+            if (internalLinks > 0) {
+                score += 5;
+                scoreBreakdown.push({ factor: 'Internal linking', points: 5, earned: 5 });
+            } else {
+                scoreBreakdown.push({ factor: 'Internal linking', points: 5, earned: 0 });
+            }
             
             // Content length (5 points)
-            if (wordCount > 300) score += 5;
+            if (wordCount > 300) {
+                score += 5;
+                scoreBreakdown.push({ factor: 'Content length', points: 5, earned: 5 });
+            } else {
+                scoreBreakdown.push({ factor: 'Content length', points: 5, earned: 0 });
+            }
             
             // Canonical URL (5 points)
-            if (canonical) score += 5;
+            if (canonical) {
+                score += 5;
+                scoreBreakdown.push({ factor: 'Canonical URL', points: 5, earned: 5 });
+            } else {
+                scoreBreakdown.push({ factor: 'Canonical URL', points: 5, earned: 0 });
+            }
+
+            // JavaScript detection analysis
+            const jsAnalysis = this.detectJavaScriptNeed($, html);
 
             return {
                 title,
@@ -180,6 +600,8 @@ class OptimizedAuditOrchestrator {
                 https,
                 canonical,
                 score, // Add calculated score
+                scoreBreakdown, // Add detailed scoring breakdown
+                jsAnalysis, // Add JavaScript detection results
                 og: {
                     title: $('meta[property="og:title"]').attr('content') || '',
                     description: $('meta[property="og:description"]').attr('content') || '',
@@ -194,27 +616,22 @@ class OptimizedAuditOrchestrator {
 
     // Basic performance check using simple HTTP metrics
     async checkBasicPerformance(url) {
-        const fetch = require('node-fetch');
-        
         try {
             const startTime = Date.now();
-            const response = await fetch(url, { 
-                timeout: 15000,
-                headers: { 'User-Agent': 'SEO-Audit-Tool/2.1.0' }
-            });
+            const response = await this.makeOptimizedRequest(url, { includeBody: false });
             const endTime = Date.now();
             const responseTime = endTime - startTime;
             
-            const contentLength = parseInt(response.headers.get('content-length') || '0');
+            const contentLength = parseInt(response.headers['content-length'] || '0');
             
             return {
                 responseTime,
                 statusCode: response.status,
                 contentLength,
-                contentType: response.headers.get('content-type') || '',
-                server: response.headers.get('server') || '',
-                cacheControl: response.headers.get('cache-control') || '',
-                compression: response.headers.get('content-encoding') || 'none',
+                contentType: response.headers['content-type'] || '',
+                server: response.headers['server'] || '',
+                cacheControl: response.headers['cache-control'] || '',
+                compression: response.headers['content-encoding'] || 'none',
                 score: responseTime < 1000 ? 100 : responseTime < 2000 ? 80 : responseTime < 3000 ? 60 : 40,
                 // Frontend-compatible structure
                 metrics: {
@@ -419,7 +836,7 @@ class OptimizedAuditOrchestrator {
             if (!title) issues.push('Missing title tag');
             if (!description) issues.push('Missing meta description');
             if (title.length > 60) issues.push('Title tag too long (>60 chars)');
-            if (description.length > 160) issues.push('Meta description too long (>160 chars)');
+            // Removed: Google doesn't enforce strict meta description length limits
 
             return {
                 title,
@@ -759,22 +1176,23 @@ class OptimizedAuditOrchestrator {
 
     // Enhanced audit that loads heavy dependencies on demand
     async performEnhancedAudit(url, options = {}) {
-        logger.info(`Attempting enhanced audit for: ${url}`);
+        logger.info(`Starting optimized audit for: ${url}`);
         
-        try {
-            // Try to load puppeteer for enhanced checks
-            const puppeteer = await this.loadPuppeteer();
-            
-            if (puppeteer) {
-                return await this.performPuppeteerAudit(url, options);
-            } else {
-                logger.info('Falling back to lightweight audit mode');
-                return await this.performLightweightAudit(url, options);
+        // Skip Puppeteer for performance unless explicitly requested
+        if (options.forcePuppeteer) {
+            try {
+                const puppeteer = await this.loadPuppeteer();
+                if (puppeteer) {
+                    logger.info('Using Puppeteer for enhanced audit');
+                    return await this.performPuppeteerAudit(url, options);
+                }
+            } catch (error) {
+                logger.warn('Puppeteer failed, using optimized lightweight mode');
             }
-        } catch (error) {
-            logger.warn('Enhanced audit failed, falling back to lightweight mode');
-            return await this.performLightweightAudit(url, options);
         }
+        
+        // Use optimized lightweight audit by default (faster)
+        return await this.performLightweightAudit(url, options);
     }
 
     async performPuppeteerAudit(url, options = {}) {
@@ -862,6 +1280,336 @@ class OptimizedAuditOrchestrator {
             };
         }
     }
+
+    // AEO (Answer Engine Optimization) readiness analysis - optimized
+    async checkAEOReadiness(url) {
+        try {
+            const pageContent = await this.getPageContent(url);
+            const { $, html } = pageContent;
+
+            // Detect language for scoping checks
+            const language = this.detectPageLanguage($);
+            const isEnglish = language === 'en';
+
+            // 1. FAQ Detection (Schema-based - multilingual safe)
+            const faqSchemaDetected = $('script[type="application/ld+json"]').toArray().some(script => {
+                try {
+                    const data = JSON.parse($(script).text());
+                    return this.containsFAQSchema(data);
+                } catch (e) {
+                    return false;
+                }
+            });
+
+            // 2. FAQ Pattern Detection (English-only)
+            let faqPatternsFound = 0;
+            let faqPatternsScope = 'multilingual-safe';
+            
+            if (isEnglish) {
+                faqPatternsScope = 'english-only';
+                const bodyText = $('body').text();
+                
+                // English FAQ patterns
+                const faqPatterns = [
+                    /\bQ:\s*(.+?)\s*A:/gi,
+                    /\bQuestion:\s*(.+?)\s*Answer:/gi,
+                    /\bFAQ/gi,
+                    /\bFrequently Asked Questions/gi,
+                    /\bQ&A/gi
+                ];
+                
+                faqPatternsFound = faqPatterns.reduce((count, pattern) => {
+                    const matches = bodyText.match(pattern) || [];
+                    return count + matches.length;
+                }, 0);
+            }
+
+            // 3. Heading Structure Analysis (multilingual safe)
+            const headings = {
+                h1: $('h1').length,
+                h2: $('h2').length,
+                h3: $('h3').length,
+                h4: $('h4').length,
+                h5: $('h5').length,
+                h6: $('h6').length
+            };
+
+            const hasHierarchy = headings.h1 > 0 && headings.h2 > 0;
+            const hierarchyDepth = Object.values(headings).filter(count => count > 0).length;
+
+            // 4. List Structure Detection (multilingual safe)
+            const lists = {
+                unordered: $('ul').length,
+                ordered: $('ol').length,
+                total: $('ul, ol').length
+            };
+
+            // 5. Conversational Tone Analysis (English-only)
+            let conversationalScore = 0;
+            let conversationalScope = 'not-analyzed';
+            
+            if (isEnglish) {
+                conversationalScope = 'english-only';
+                conversationalScore = this.analyzeConversationalTone($);
+            }
+
+            // Calculate AEO Score
+            const aeoScore = this.calculateAEOScore({
+                faqSchemaDetected,
+                faqPatternsFound,
+                hasHierarchy,
+                hierarchyDepth,
+                listsTotal: lists.total,
+                conversationalScore,
+                isEnglish
+            });
+
+            return {
+                score: aeoScore,
+                language: language,
+                faq: {
+                    schemaDetected: faqSchemaDetected,
+                    patternsFound: faqPatternsFound,
+                    patternsScope: faqPatternsScope
+                },
+                headingStructure: {
+                    hierarchy: hasHierarchy,
+                    depth: hierarchyDepth,
+                    counts: headings,
+                    scope: 'multilingual-safe'
+                },
+                lists: {
+                    ...lists,
+                    scope: 'multilingual-safe'
+                },
+                conversationalTone: {
+                    score: conversationalScore,
+                    scope: conversationalScope
+                },
+                recommendations: this.generateAEORecommendations({
+                    faqSchemaDetected,
+                    faqPatternsFound,
+                    hasHierarchy,
+                    hierarchyDepth,
+                    listsTotal: lists.total,
+                    isEnglish
+                })
+            };
+
+        } catch (error) {
+            throw new Error(`AEO check failed: ${error.message}`);
+        }
+    }
+
+    // Detect page language (simple heuristic)
+    detectPageLanguage($) {
+        const langAttr = $('html').attr('lang') || $('html').attr('xml:lang');
+        if (langAttr) {
+            return langAttr.toLowerCase().split('-')[0]; // e.g., 'en-US' -> 'en'
+        }
+        
+        // Fallback: assume English for now (could be enhanced)
+        return 'en';
+    }
+
+    // Check if schema data contains FAQ schema
+    containsFAQSchema(data) {
+        if (Array.isArray(data)) {
+            return data.some(item => this.containsFAQSchema(item));
+        }
+        
+        if (typeof data === 'object' && data !== null) {
+            if (data['@type'] === 'FAQPage' || 
+                (Array.isArray(data['@type']) && data['@type'].includes('FAQPage'))) {
+                return true;
+            }
+            
+            return Object.values(data).some(value => {
+                if (typeof value === 'object') {
+                    return this.containsFAQSchema(value);
+                }
+                return false;
+            });
+        }
+        
+        return false;
+    }
+
+    // Analyze conversational tone (English-only)
+    analyzeConversationalTone($) {
+        const bodyText = $('body').text();
+        const sentences = bodyText.split(/[.!?]+/).filter(s => s.trim().length > 0);
+        
+        if (sentences.length === 0) return 0;
+        
+        let score = 0;
+        
+        // Average sentence length (shorter = more conversational)
+        const avgSentenceLength = sentences.reduce((sum, s) => sum + s.trim().split(/\s+/).length, 0) / sentences.length;
+        if (avgSentenceLength < 20) score += 25;
+        else if (avgSentenceLength < 30) score += 15;
+        
+        // Personal pronouns (more = more conversational)
+        const pronouns = /\b(you|your|we|our|us|I|my|me)\b/gi;
+        const pronounMatches = bodyText.match(pronouns) || [];
+        const pronounDensity = pronounMatches.length / bodyText.split(/\s+/).length;
+        if (pronounDensity > 0.02) score += 25; // 2% density
+        else if (pronounDensity > 0.01) score += 15;
+        
+        // Questions (more = more conversational)
+        const questionMarks = (bodyText.match(/\?/g) || []).length;
+        const questionDensity = questionMarks / sentences.length;
+        if (questionDensity > 0.1) score += 25; // 10% of sentences are questions
+        else if (questionDensity > 0.05) score += 15;
+        
+        // Contractions (more = more conversational)
+        const contractions = /\b(don't|won't|can't|isn't|aren't|wasn't|weren't|hasn't|haven't|hadn't|doesn't|didn't|couldn't|shouldn't|wouldn't|mustn't|needn't|daren't|mayn't|oughtn't|mightn't|'ll|'re|'ve|'d|'m)\b/gi;
+        const contractionMatches = bodyText.match(contractions) || [];
+        if (contractionMatches.length > 5) score += 25;
+        else if (contractionMatches.length > 2) score += 15;
+        
+        return Math.min(score, 100);
+    }
+
+    // Calculate overall AEO score
+    calculateAEOScore(factors) {
+        let score = 0;
+        
+        // FAQ Detection (40 points)
+        if (factors.faqSchemaDetected) score += 40;
+        else if (factors.faqPatternsFound > 0) score += Math.min(factors.faqPatternsFound * 10, 30);
+        
+        // Heading Structure (30 points)
+        if (factors.hasHierarchy) score += 20;
+        if (factors.hierarchyDepth > 2) score += 10;
+        
+        // Lists (20 points)
+        if (factors.listsTotal > 0) score += 10;
+        if (factors.listsTotal > 5) score += 10;
+        
+        // Conversational Tone (10 points - English only)
+        if (factors.isEnglish) {
+            score += Math.round(factors.conversationalScore * 0.1);
+        } else {
+            // For non-English, normalize score based on available factors
+            score = Math.round(score * 1.11); // Adjust for missing 10% from tone
+        }
+        
+        return Math.min(score, 100);
+    }
+
+    // Generate AEO recommendations
+    generateAEORecommendations(factors) {
+        const recommendations = [];
+        
+        if (!factors.faqSchemaDetected && factors.faqPatternsFound === 0) {
+            recommendations.push({
+                priority: 'high',
+                title: 'Add FAQ content',
+                description: 'Create FAQ section with structured data markup',
+                scope: 'multilingual-safe'
+            });
+        }
+        
+        if (!factors.hasHierarchy) {
+            recommendations.push({
+                priority: 'medium',
+                title: 'Improve heading structure',
+                description: 'Use H1, H2, H3 hierarchy for better content organization',
+                scope: 'multilingual-safe'
+            });
+        }
+        
+        if (factors.listsTotal === 0) {
+            recommendations.push({
+                priority: 'medium',
+                title: 'Add structured lists',
+                description: 'Use bullet points and numbered lists for scannable content',
+                scope: 'multilingual-safe'
+            });
+        }
+        
+        if (factors.isEnglish && factors.conversationalScore < 50) {
+            recommendations.push({
+                priority: 'low',
+                title: 'Make content more conversational',
+                description: 'Use shorter sentences, personal pronouns, and questions',
+                scope: 'english-only'
+            });
+        }
+        
+        return recommendations;
+    }
+}
+
+// Server setup
+if (require.main === module) {
+    const express = require('express');
+    const cors = require('cors');
+    const app = express();
+    const port = process.env.PORT || 3001;
+
+    // CORS configuration - allow all origins for now
+    app.use(cors({
+        origin: true, // Allow all origins
+        methods: ['GET', 'POST', 'OPTIONS', 'HEAD'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+        credentials: true
+    }));
+    
+    app.use(express.json());
+    
+    // Add health check endpoint with CORS debugging
+    app.get('/api/health-new', (req, res) => {
+        console.log('Health check requested from origin:', req.headers.origin);
+        res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.json({
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            mode: 'optimized',
+            memory: {
+                used: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
+                total: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`
+            },
+            cors: {
+                origin: req.headers.origin,
+                method: req.method
+            }
+        });
+    });
+
+    const orchestrator = new OptimizedAuditOrchestrator();
+
+    app.get('/api/audit', async (req, res) => {
+        try {
+            // Explicit CORS headers
+            res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+            res.header('Access-Control-Allow-Credentials', 'true');
+            
+            const { url } = req.query;
+            if (!url) {
+                return res.status(400).json({ error: 'URL parameter is required' });
+            }
+
+            console.log(`Starting analysis for: ${url} from origin:`, req.headers.origin);
+            const options = {
+                includeLighthouse: req.query.lighthouse === 'true',
+                fastMode: req.query.fast === 'true',
+                forcePuppeteer: req.query.puppeteer === 'true'
+            };
+            const results = await orchestrator.performEnhancedAudit(url, options);
+            res.json(results);
+        } catch (error) {
+            console.error('Audit error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.listen(port, () => {
+        console.log(`🚀 AI-Era SEO Audit API running on port ${port}`);
+    });
 }
 
 module.exports = OptimizedAuditOrchestrator;

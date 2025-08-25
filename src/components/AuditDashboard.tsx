@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AttentionCards } from '@/components/audit/AttentionCards';
+import { AEOAnalysis } from '@/components/audit/AEOAnalysis';
 import { AIAnalysisSection } from '@/components/audit/AIAnalysisSection';
 import { BatchAuditSection } from '@/components/audit/BatchAuditSection';
 import { BusinessValueSection } from '@/components/audit/BusinessValueSection';
@@ -18,6 +19,7 @@ export function AuditDashboard() {
   const [loadingState, setLoadingState] = useState<LoadingState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [includeLighthouse, setIncludeLighthouse] = useState(false);
+  const [fastMode, setFastMode] = useState(true);
   const [activeTab, setActiveTab] = useState<'single' | 'batch'>('single');
 
   // URL validation
@@ -50,7 +52,8 @@ export function AuditDashboard() {
 
     try {
       const auditResults = await auditService.performAudit(url, { 
-        includeLighthouse 
+        includeLighthouse,
+        fastMode
       });
       
       setResults(auditResults);
@@ -105,7 +108,7 @@ export function AuditDashboard() {
             Attention is all you <span className="text-primary">need.</span>
           </h1>
           <p className="academic-subtitle max-w-3xl mx-auto">
-            A rigorous, no-fuss SEO & technical audit tool — designed for the era of AI-powered search optimization.
+            A no-fuss audit tool — designed for the era of AI-powered search optimization.
           </p>
           <p className="text-sm text-muted-foreground max-w-2xl mx-auto leading-relaxed">
             Because while "attention is all you need" revolutionized AI, you still need structured data, 
@@ -200,18 +203,32 @@ export function AuditDashboard() {
 
                 {/* Options & Secondary Actions */}
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between pt-4 border-t border-border/50">
-                  {/* Lighthouse Option */}
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={includeLighthouse}
-                      onChange={(e) => setIncludeLighthouse(e.target.checked)}
-                      className="rounded border-border text-primary focus:ring-primary"
-                    />
-                    <span className="text-muted-foreground">
-                      Include Lighthouse performance metrics (slower, more comprehensive)
-                    </span>
-                  </label>
+                  {/* Performance Options */}
+                  <div className="flex flex-col gap-3">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={fastMode}
+                        onChange={(e) => setFastMode(e.target.checked)}
+                        className="rounded border-border text-primary focus:ring-primary"
+                      />
+                      <span className="text-muted-foreground">
+                        Fast mode (⚡ 2-3 seconds, skips heavy diagnostics)
+                      </span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={includeLighthouse}
+                        onChange={(e) => setIncludeLighthouse(e.target.checked)}
+                        disabled={fastMode}
+                        className="rounded border-border text-primary focus:ring-primary disabled:opacity-50"
+                      />
+                      <span className={`text-muted-foreground ${fastMode ? 'opacity-50' : ''}`}>
+                        Include Lighthouse performance metrics (🐌 slower, more comprehensive)
+                      </span>
+                    </label>
+                  </div>
 
                   {/* Secondary Actions */}
                   <div className="flex gap-2">
@@ -311,6 +328,14 @@ export function AuditDashboard() {
                 
                 {/* Core Metrics */}
                 <AttentionCards results={results} />
+                
+                {/* AEO Analysis Section */}
+                {results.tests.aeo && (
+                  <div className="border-t border-border pt-8">
+                    <h2 className="academic-section-title">Answer Engine Optimization (AEO)</h2>
+                    <AEOAnalysis aeoResult={results.tests.aeo} />
+                  </div>
+                )}
                 
                 {/* AI Analysis Section */}
                 <div className="border-t border-border pt-8">

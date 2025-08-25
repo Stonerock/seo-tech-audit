@@ -4,6 +4,9 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    'import.meta.env.VITE_BACKEND_URL': JSON.stringify(process.env.VITE_BACKEND_URL || 'https://seo-audit-backend-458683085682.us-central1.run.app')
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

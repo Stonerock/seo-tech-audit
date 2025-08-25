@@ -1107,14 +1107,13 @@ class AIContentAnalyzer {
     const h1Count = headings.filter(h => h.level === 1).length;
     analysis.details.hasH1 = h1Count > 0;
     
-    if (h1Count === 1) {
+    if (h1Count > 0) {
       analysis.score += 30;
-      analysis.strengths.push('Single H1 tag found');
-    } else if (h1Count === 0) {
-      analysis.issues.push('Missing H1 tag');
+      analysis.strengths.push(`H1 heading${h1Count > 1 ? 's' : ''} found`);
     } else {
-      analysis.issues.push('Multiple H1 tags found');
+      analysis.issues.push('Missing H1 tag - consider adding a main heading');
     }
+    // Note: Multiple H1s are acceptable in HTML5
 
     // Check hierarchy
     for (let i = 1; i < headings.length; i++) {

@@ -18,6 +18,9 @@ interface DataSectionProps {
 }
 
 function DataSection({ title, icon: Icon, data, isExpanded = false, onToggle }: DataSectionProps) {
+  // Special handling for scoring breakdown
+  const isScoring = title === 'Score Breakdown';
+  
   return (
     <Card className="border-border/50">
       <CardHeader 
@@ -38,11 +41,35 @@ function DataSection({ title, icon: Icon, data, isExpanded = false, onToggle }: 
       </CardHeader>
       {isExpanded && (
         <CardContent className="pt-0">
-          <div className="bg-muted/20 rounded-md p-4">
-            <pre className="text-xs font-mono text-foreground whitespace-pre-wrap overflow-x-auto">
-              {JSON.stringify(data, null, 2)}
-            </pre>
-          </div>
+          {isScoring && Array.isArray(data) ? (
+            <div className="space-y-3">
+              {data.map((item, index) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-muted/20 rounded-md">
+                  <div>
+                    <span className="text-sm font-medium text-foreground">{item.factor}</span>
+                    <div className="text-xs text-muted-foreground">{item.earned}/{item.points} points</div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-sm font-bold ${item.earned === item.points ? 'text-green-600' : item.earned > 0 ? 'text-amber-600' : 'text-red-600'}`}>
+                      {item.earned > 0 ? '✓' : '✗'} {item.earned}
+                    </div>
+                    <div className="text-xs text-muted-foreground">/{item.points}</div>
+                  </div>
+                </div>
+              ))}
+              <div className="border-t pt-2 mt-4">
+                <div className="text-sm text-muted-foreground">
+                  Total: <strong>{data.reduce((sum, item) => sum + item.earned, 0)}</strong> / {data.reduce((sum, item) => sum + item.points, 0)} points
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-muted/20 rounded-md p-4">
+              <pre className="text-xs font-mono text-foreground whitespace-pre-wrap overflow-x-auto">
+                {JSON.stringify(data, null, 2)}
+              </pre>
+            </div>
+          )}
         </CardContent>
       )}
     </Card>
@@ -95,7 +122,7 @@ export function ComprehensiveDataSection({ results }: ComprehensiveDataSectionPr
       csvData.push(['SEO Score', '', seo.score.toString(), getScoreStatus(seo.score)]);
       csvData.push(['Title', seo.title, '', seo.title ? 'Present' : 'Missing']);
       csvData.push(['Meta Description', seo.description, '', seo.description ? 'Present' : 'Missing']);
-      csvData.push(['H1 Count', seo.h1Count.toString(), '', seo.h1Count === 1 ? 'Optimal' : 'Needs attention']);
+      csvData.push(['H1 Count', seo.h1Count.toString(), '', seo.h1Count > 0 ? 'Good' : 'Missing']);
       csvData.push(['H2 Count', seo.h2Count.toString(), '', seo.h2Count > 0 ? 'Good' : 'Missing']);
       csvData.push(['Internal Links', seo.internalLinks.toString(), '', '']);
       csvData.push(['External Links', seo.externalLinks.toString(), '', '']);
@@ -151,6 +178,14 @@ export function ComprehensiveDataSection({ results }: ComprehensiveDataSectionPr
 
   const sections = [
     {
+      key: 'scoring',
+      title: 'Score Breakdown',
+      icon: Search,
+      data: results.tests.seo?.scoreBreakdown || 'No scoring breakdown available',
+      available: !!results.tests.seo?.scoreBreakdown,
+      special: true
+    },
+    {
       key: 'seo',
       title: 'SEO Analysis Data',
       icon: Search,
@@ -203,9 +238,15 @@ export function ComprehensiveDataSection({ results }: ComprehensiveDataSectionPr
             <Database className="w-6 h-6 text-primary" />
             Comprehensive Data Export & Analysis
           </CardTitle>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground mb-2">
             Complete technical audit data with export capabilities for further analysis and reporting
           </p>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="font-medium text-amber-700">⚠️ Static HTML Analysis</span>
+            <span className="text-muted-foreground">
+              JavaScript-rendered content and dynamic elements not captured
+            </span>
+          </div>
         </CardHeader>
         <CardContent>
           {/* Data Summary */}

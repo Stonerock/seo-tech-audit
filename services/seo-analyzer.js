@@ -55,15 +55,12 @@ class SEOAnalyzer {
 
     if (!seo.metaDescription) {
       seo.issues.push('Missing meta description');
-    } else if (seo.metaDescription.length > 160) {
-      seo.issues.push('Meta description too long (>160 characters)');
-    }
+    } // Note: Google no longer has strict length limits for meta descriptions
 
     if (seo.h1Count === 0) {
-      seo.issues.push('Missing H1 tag');
-    } else if (seo.h1Count > 1) {
-      seo.issues.push('Multiple H1 tags found');
+      seo.issues.push('Missing H1 tag - consider adding a main heading');
     }
+    // Note: Multiple H1s are acceptable in modern HTML5
 
     if (!seo.https) {
       seo.issues.push('Not using HTTPS');
@@ -252,7 +249,7 @@ class SEOAnalyzer {
     if (!meta.title) issues.push('Title missing');
     if (meta.title && meta.title.length > 60) issues.push('Title too long (>60 characters)');
     if (!meta.description) issues.push('Meta description missing');
-    if (meta.description && meta.description.length > 160) issues.push('Description too long (>160 characters)');
+    // Removed: Google no longer enforces strict meta description length limits
     if (!meta.viewport) issues.push('Viewport meta missing (mobile optimization)');
     
     // Open Graph validation
@@ -278,7 +275,7 @@ class SEOAnalyzer {
     
     // Bonus points for good practices
     if (seo.https) score += 5;
-    if (seo.h1Count === 1) score += 5;
+    if (seo.h1Count > 0) score += 5; // Any H1 present is good
     if (seo.canonical) score += 5;
     if (seo.lang) score += 5;
     if (seo.hreflang) score += 5;

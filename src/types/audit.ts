@@ -11,6 +11,7 @@ export interface AuditResult {
     files?: FilesResult;
     metadata?: MetadataResult;
     schema?: SchemaResult;
+    aeo?: AEOResult;
   };
   overallScore?: number;
 }
@@ -134,6 +135,7 @@ export interface AuditOptions {
   includeLighthouse?: boolean;
   timeout?: number;
   includeScreenshot?: boolean;
+  fastMode?: boolean;
 }
 
 // Status types for UI components
@@ -169,4 +171,50 @@ export interface ExportSummary {
   keyFindings: string[];
   recommendations: string[];
   technicalDetails: AuditResult;
+}
+
+// AEO (Answer Engine Optimization) result interface
+export interface AEOResult {
+  score: number;
+  language: string;
+  faq: {
+    schemaDetected: boolean;
+    patternsFound: number;
+    patternsScope: 'multilingual-safe' | 'english-only';
+  };
+  headingStructure: {
+    hierarchy: boolean;
+    depth: number;
+    counts: {
+      h1: number;
+      h2: number;
+      h3: number;
+      h4: number;
+      h5: number;
+      h6: number;
+    };
+    scope: 'multilingual-safe';
+  };
+  listStructure: {
+    unordered: number;
+    ordered: number;
+    total: number;
+    scope: 'multilingual-safe';
+  };
+  conversationalTone?: {
+    score: number;
+    factors: {
+      questionWords: number;
+      personalPronouns: number;
+      contractionsFound: number;
+      avgSentenceLength: number;
+    };
+    scope: 'english-only';
+  };
+  recommendations: Array<{
+    priority: 'high' | 'medium' | 'low';
+    title: string;
+    description: string;
+    scope: 'multilingual-safe' | 'english-only';
+  }>;
 }

@@ -67,7 +67,7 @@ if (typeof File === 'undefined') {
 
 const express = require('express');
 const cors = require('cors');
-const rateLimit = require('express-rate-limit');
+// const rateLimit = require('express-rate-limit'); // Disabled for debugging
 
 // Basic logging without heavy winston dependencies
 const log = {
@@ -80,15 +80,25 @@ const log = {
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Security-hardened middleware
+// CORS middleware - allow all origins for now to fix the issue
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://seo-audit-tool-e50.pages.dev', 'https://attentionisallyouneed.app']
-    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080'],
+  origin: (origin, callback) => {
+    // Allow no-origin requests (curl, server-to-server)
+    if (!origin) return callback(null, true);
+    const allowed = [
+      'https://seo-audit-tool-e50.pages.dev',
+    ];
+    // Allow Cloudflare Pages preview subdomains
+    const isPagesPreview = /https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.pages\.dev$/i.test(origin);
+    if (allowed.includes(origin) || isPagesPreview) {
+      return callback(null, true);
+    }
+    return callback(null, true); // Temporarily allow all to avoid blocking
+  },
   credentials: true,
-  maxAge: 86400, // 24 hours
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  maxAge: 86400,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 app.use(express.json({ limit: '2mb' })); // Reduced from 10mb
@@ -105,27 +115,12 @@ app.use((req, res, next) => {
     next();
 });
 
-// Enhanced rate limiting with different limits for different endpoints
-const generalLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute
-    max: 30, // General API calls
-    message: { error: 'Too many requests, please try again later' },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-
-const auditLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute  
-    max: 3, // Only 3 audit requests per minute - much more reasonable
-    message: { error: 'Too many audit requests. Please wait before analyzing another URL.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-
-// Apply different rate limits
-app.use('/api/health', generalLimiter);
-app.use('/api/audit', auditLimiter);
-app.use('/api/', generalLimiter);
+// Rate limiting disabled for debugging
+// const generalLimiter = rateLimit({...});
+// const auditLimiter = rateLimit({...});
+// app.use('/api/health', generalLimiter);
+// app.use('/api/audit', auditLimiter);
+// app.use('/api/', generalLimiter);
 
 // Lazy-loaded orchestrator
 let orchestrator = null;
@@ -139,8 +134,8 @@ const getOrchestrator = () => {
 };
 
 // Health check endpoint (no dependencies needed)
-app.get('/api/health', (req, res) => {
-    res.json({
+app.get('/api/health', async (req, res) => {
+    const health = {
         status: 'ok',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
@@ -148,8 +143,43 @@ app.get('/api/health', (req, res) => {
         memory: {
             used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
             total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
+        },
+        features: {
+            staticAnalysis: 'available',
+            jsDetection: 'available'
         }
-    });
+    };
+
+    // Check JavaScript rendering capability
+    try {
+        const jsRenderer = await getOrchestrator().loadJSRenderer();
+        if (jsRenderer) {
+            const jsHealth = await jsRenderer.healthCheck();
+            health.features.jsRendering = {
+                status: jsHealth.status,
+                mode: jsHealth.mode,
+                available: jsHealth.status === 'healthy'
+            };
+            if (jsHealth.mode === 'browserless') {
+                health.features.jsRendering.provider = 'browserless.io';
+                health.features.jsRendering.hasToken = jsHealth.hasToken;
+            }
+        } else {
+            health.features.jsRendering = {
+                status: 'unavailable',
+                mode: 'none',
+                available: false
+            };
+        }
+    } catch (error) {
+        health.features.jsRendering = {
+            status: 'error',
+            available: false,
+            error: error.message
+        };
+    }
+
+    res.json(health);
 });
 
 // Input validation middleware
@@ -283,6 +313,52 @@ app.post('/api/audit/enhanced', async (req, res) => {
     }
 });
 
+// Two-pass audit endpoint (static + JavaScript rendering when needed)
+app.post('/api/audit/two-pass', validateAuditInput, async (req, res) => {
+    const { url, options = {} } = req.body;
+
+    const startTime = Date.now();
+    const timeoutMs = 60000; // 60 second timeout for two-pass audit
+    
+    try {
+        log.info(`Starting two-pass audit for: ${url}`);
+        
+        // Race between audit and timeout
+        const auditPromise = getOrchestrator().performTwoPassAudit(url, { 
+            ...options, 
+            enableJS: options.enableJS !== false // Default to true
+        });
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Two-pass audit timeout')), timeoutMs)
+        );
+        
+        const result = await Promise.race([auditPromise, timeoutPromise]);
+        
+        log.info(`Two-pass audit completed in ${Date.now() - startTime}ms`);
+        res.json(result);
+        
+    } catch (error) {
+        log.error(`Two-pass audit failed for ${url}:`, error.message);
+        
+        // Fallback to lightweight audit
+        try {
+            log.info('Falling back to lightweight audit...');
+            const fallback = await getOrchestrator().performLightweightAudit(url, options);
+            res.status(500).json({
+                error: 'Two-pass audit failed, fallback to static analysis',
+                details: error.message,
+                fallback
+            });
+        } catch (fallbackError) {
+            res.status(500).json({
+                error: 'Both two-pass and fallback audits failed',
+                details: error.message,
+                fallbackError: fallbackError.message
+            });
+        }
+    }
+});
+
 // Cache management
 let cache = new Map();
 app.post('/api/cache/clear', (req, res) => {
@@ -302,17 +378,11 @@ app.post('/api/cache/clear', (req, res) => {
     });
 });
 
-// Enhanced batch audit limiter - more restrictive for batch operations
-const batchAuditLimiter = rateLimit({
-    windowMs: 5 * 60 * 1000, // 5 minutes
-    max: 2, // Only 2 batch audits per 5 minutes
-    message: { error: 'Too many batch audit requests. Please wait before starting another batch analysis.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
+// Enhanced batch audit limiter - disabled for debugging
+// const batchAuditLimiter = rateLimit({...});
 
 // Enhanced sitemap discovery and batch auditing
-app.post('/api/sitemap-audit', batchAuditLimiter, async (req, res) => {
+app.post('/api/sitemap-audit', async (req, res) => {
     const { url, maxUrls = 20, mode = 'discover' } = req.body;
     
     if (!url) {

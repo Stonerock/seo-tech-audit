@@ -16,9 +16,11 @@ export class AuditService {
     // Environment-based URL configuration (no more hardcoded URLs!)
     this.baseURL = import.meta.env.VITE_BACKEND_URL || 
       (import.meta.env.MODE === 'development' 
-        ? 'http://localhost:8080'
-        : 'https://seo-audit-backend-458683085682.us-central1.run.app'
+        ? 'http://localhost:3001'
+        : 'https://seo-audit-service-458683085682.us-central1.run.app'
       );
+    
+    console.log('🔗 Backend URL:', this.baseURL);
   }
 
   /**
@@ -34,12 +36,19 @@ export class AuditService {
     }
 
     try {
+      // Use POST request as expected by the deployed backend
       const response = await fetch(`${this.baseURL}/api/audit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ url, options }),
+        body: JSON.stringify({ 
+          url, 
+          options: {
+            ...options,
+            skipLighthouse: options.fastMode, // Map fastMode to skipLighthouse
+          }
+        }),
       });
 
       if (!response.ok) {

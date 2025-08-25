@@ -798,8 +798,8 @@ class PerformanceAnalyzer {
       recommendations.push({
         type: 'headings',
         message: 'Add H1 heading to page',
-        impact: 'high',
-        details: 'Pages should have exactly one H1 heading'
+        impact: 'medium',
+        details: 'Consider adding a main heading for better content structure'
       });
     }
 
