@@ -14,6 +14,7 @@ RUN npm ci --only=production --no-optional && npm cache clean --force
 COPY server.js ./
 COPY services/ ./services/
 COPY utils/ ./utils/
+COPY config/ ./config/
 
 # Create minimal utils structure if it doesn't exist
 RUN mkdir -p utils && \
