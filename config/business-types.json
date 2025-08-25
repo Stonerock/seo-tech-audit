@@ -1,0 +1,80 @@
+{
+  "LocalBusiness": {
+    "name": "Local Business",
+    "description": "Physical business serving local customers",
+    "requiredFields": {
+      "address": 20,
+      "openingHours": 20,
+      "telephone": 10,
+      "geo": 10,
+      "sameAs": 10,
+      "aggregateRating": 10,
+      "priceRange": 10,
+      "logo": 10
+    },
+    "identifyingSchemas": ["LocalBusiness", "Restaurant", "Store"],
+    "fallbackKeywords": ["address", "hours", "location", "phone", "contact"]
+  },
+  "Product": {
+    "name": "E-commerce/Product",
+    "description": "Online store or product catalog",
+    "requiredFields": {
+      "name": 10,
+      "image": 10,
+      "description": 10,
+      "offers.price": 20,
+      "offers.availability": 20,
+      "brand": 10,
+      "sku": 10,
+      "aggregateRating": 10
+    },
+    "identifyingSchemas": ["Product", "Offer", "ProductGroup"],
+    "fallbackKeywords": ["price", "buy", "shop", "cart", "product", "store"]
+  },
+  "SoftwareApplication": {
+    "name": "SaaS/Software",
+    "description": "Software application or SaaS platform",
+    "requiredFields": {
+      "name": 10,
+      "description": 10,
+      "applicationCategory": 10,
+      "offers.price": 20,
+      "operatingSystem": 10,
+      "softwareVersion": 10,
+      "aggregateRating": 10,
+      "publisher": 20
+    },
+    "identifyingSchemas": ["SoftwareApplication", "WebApplication", "MobileApplication"],
+    "fallbackKeywords": ["software", "app", "saas", "platform", "api", "dashboard"]
+  },
+  "Organization": {
+    "name": "General Organization",
+    "description": "Corporate website or general organization",
+    "requiredFields": {
+      "name": 20,
+      "description": 15,
+      "url": 10,
+      "logo": 15,
+      "sameAs": 15,
+      "address": 10,
+      "contactPoint": 10,
+      "foundingDate": 5
+    },
+    "identifyingSchemas": ["Organization", "Corporation", "Company"],
+    "fallbackKeywords": ["about", "company", "team", "services", "business"]
+  },
+  "WebPage": {
+    "name": "General Website",
+    "description": "Generic website or content site",
+    "requiredFields": {
+      "name": 20,
+      "description": 20,
+      "mainEntity": 15,
+      "breadcrumb": 15,
+      "author": 15,
+      "datePublished": 15
+    },
+    "identifyingSchemas": ["WebPage", "WebSite", "Article", "BlogPosting"],
+    "fallbackKeywords": ["blog", "article", "content", "news", "information"]
+  }
+}

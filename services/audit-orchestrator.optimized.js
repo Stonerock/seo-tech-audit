@@ -44,39 +44,46 @@ class OptimizedAuditOrchestrator {
 
         try {
             // Parallel execution of lightweight checks
-            const [
-                basicSeo,
-                basicPerformance,
-                basicAccessibility,
-                basicFiles,
-                basicMetadata,
-                basicSchema
-            ] = await Promise.allSettled([
+            const checks = [
                 this.checkBasicSEO(url),
                 this.checkBasicPerformance(url),
                 this.checkBasicAccessibility(url),
                 this.checkBasicFiles(url),
                 this.checkBasicMetadata(url),
                 this.checkBasicSchema(url)
-            ]);
+            ];
 
-            const results = {
+            // Add Lighthouse check if requested
+            if (options.includeLighthouse) {
+                logger.info('Including Lighthouse performance audit');
+                checks.push(this.checkLighthousePerformance(url));
+            }
+
+            const results = await Promise.allSettled(checks);
+
+            const auditResults = {
                 url,
                 timestamp: new Date().toISOString(),
                 executionTime: Date.now() - startTime,
                 tests: {
-                    seo: basicSeo.status === 'fulfilled' ? basicSeo.value : { error: basicSeo.reason?.message },
-                    performance: basicPerformance.status === 'fulfilled' ? basicPerformance.value : { error: basicPerformance.reason?.message },
-                    accessibility: basicAccessibility.status === 'fulfilled' ? basicAccessibility.value : { error: basicAccessibility.reason?.message },
-                    files: basicFiles.status === 'fulfilled' ? basicFiles.value : { error: basicFiles.reason?.message },
-                    metadata: basicMetadata.status === 'fulfilled' ? basicMetadata.value : { error: basicMetadata.reason?.message },
-                    schema: basicSchema.status === 'fulfilled' ? basicSchema.value : { error: basicSchema.reason?.message }
+                    seo: results[0].status === 'fulfilled' ? results[0].value : { error: results[0].reason?.message },
+                    performance: results[1].status === 'fulfilled' ? results[1].value : { error: results[1].reason?.message },
+                    accessibility: results[2].status === 'fulfilled' ? results[2].value : { error: results[2].reason?.message },
+                    files: results[3].status === 'fulfilled' ? results[3].value : { error: results[3].reason?.message },
+                    metadata: results[4].status === 'fulfilled' ? results[4].value : { error: results[4].reason?.message },
+                    schema: results[5].status === 'fulfilled' ? results[5].value : { error: results[5].reason?.message }
                 },
-                mode: 'lightweight'
+                mode: options.includeLighthouse ? 'enhanced' : 'lightweight'
             };
 
-            logger.info(`Lightweight audit completed in ${results.executionTime}ms`);
-            return results;
+            // Add lighthouse results if available
+            if (options.includeLighthouse && results[6]) {
+                auditResults.tests.lighthouse = results[6].status === 'fulfilled' ? 
+                    results[6].value : { error: results[6].reason?.message };
+            }
+
+            logger.info(`${auditResults.mode} audit completed in ${auditResults.executionTime}ms`);
+            return auditResults;
 
         } catch (error) {
             logger.error('Lightweight audit failed:', error);
@@ -112,18 +119,67 @@ class OptimizedAuditOrchestrator {
             const html = await response.text();
             const $ = cheerio.load(html);
 
+            const title = $('title').text().trim();
+            const description = $('meta[name="description"]').attr('content') || '';
+            const h1Count = $('h1').length;
+            const h2Count = $('h2').length;
+            const internalLinks = $('a[href^="/"], a[href*="' + new URL(url).hostname + '"]').length;
+            const externalLinks = $('a[href^="http"]').not('[href*="' + new URL(url).hostname + '"]').length;
+            const images = $('img').length;
+            const imagesWithoutAlt = $('img:not([alt])').length;
+            const wordCount = $('body').text().split(/\\s+/).filter(word => word.length > 0).length;
+            const https = url.startsWith('https://');
+            const canonical = $('link[rel="canonical"]').attr('href') || '';
+
+            // Calculate SEO score based on best practices
+            let score = 0;
+            
+            // Title (25 points)
+            if (title.length > 0) {
+                if (title.length >= 30 && title.length <= 60) score += 25;
+                else if (title.length >= 20 && title.length <= 70) score += 20;
+                else if (title.length > 0) score += 10;
+            }
+            
+            // Meta description (20 points)
+            if (description.length > 0) {
+                if (description.length >= 120 && description.length <= 160) score += 20;
+                else if (description.length >= 100 && description.length <= 180) score += 15;
+                else if (description.length > 0) score += 10;
+            }
+            
+            // H1 structure (20 points)
+            if (h1Count === 1) score += 20;
+            else if (h1Count > 1) score += 10;
+            
+            // H2 structure (10 points)
+            if (h2Count > 0) score += 10;
+            
+            // HTTPS (10 points)
+            if (https) score += 10;
+            
+            // Internal linking (5 points)
+            if (internalLinks > 0) score += 5;
+            
+            // Content length (5 points)
+            if (wordCount > 300) score += 5;
+            
+            // Canonical URL (5 points)
+            if (canonical) score += 5;
+
             return {
-                title: $('title').text().trim(),
-                description: $('meta[name="description"]').attr('content') || '',
-                h1Count: $('h1').length,
-                h2Count: $('h2').length,
-                internalLinks: $('a[href^="/"], a[href*="' + new URL(url).hostname + '"]').length,
-                externalLinks: $('a[href^="http"]').not('[href*="' + new URL(url).hostname + '"]').length,
-                images: $('img').length,
-                imagesWithoutAlt: $('img:not([alt])').length,
-                wordCount: $('body').text().split(/\\s+/).filter(word => word.length > 0).length,
-                https: url.startsWith('https://'),
-                canonical: $('link[rel="canonical"]').attr('href') || '',
+                title,
+                description,
+                h1Count,
+                h2Count,
+                internalLinks,
+                externalLinks,
+                images,
+                imagesWithoutAlt,
+                wordCount,
+                https,
+                canonical,
+                score, // Add calculated score
                 og: {
                     title: $('meta[property="og:title"]').attr('content') || '',
                     description: $('meta[property="og:description"]').attr('content') || '',
@@ -336,10 +392,11 @@ class OptimizedAuditOrchestrator {
         }
     }
 
-    // Basic schema detection
+    // Enhanced schema detection with business type analysis and AI-readiness scoring
     async checkBasicSchema(url) {
         const fetch = require('node-fetch');
         const cheerio = require('cheerio');
+        const path = require('path');
 
         try {
             const controller = new AbortController();
@@ -361,10 +418,14 @@ class OptimizedAuditOrchestrator {
             const html = await response.text();
             const $ = cheerio.load(html);
 
+            // Load business types configuration
+            const businessTypesConfig = require(path.join(__dirname, '../config/business-types.json'));
+
             const jsonLdScripts = $('script[type="application/ld+json"]');
             const microdataItems = $('[itemscope]');
             const types = [];
             const issues = [];
+            const schemaData = []; // Store actual schema objects for field analysis
 
             // Enhanced JSON-LD parsing (tolerant to real-world markup)
             jsonLdScripts.each((i, script) => {
@@ -402,6 +463,7 @@ class OptimizedAuditOrchestrator {
                     }
 
                     if (parsed) {
+                        schemaData.push(parsed);
                         this.extractTypesFromJsonLd(parsed, types);
                     }
                 } catch (e) {
@@ -437,22 +499,181 @@ class OptimizedAuditOrchestrator {
                 });
             }
 
+            const uniqueTypes = [...new Set(types)];
+
+            // Detect business type (multilingual safe)
+            const businessTypeResult = this.detectBusinessType(uniqueTypes, businessTypesConfig, $, url);
+
+            // Analyze schema coverage for detected business type
+            const schemaAnalysis = this.analyzeSchemaFields(schemaData, businessTypeResult.type, businessTypesConfig);
+
+            // Calculate AI-readiness score based on schema coverage
+            const aiReadinessScore = this.calculateAIReadinessScore(schemaAnalysis, businessTypeResult, businessTypesConfig);
+
             // Basic validation
-            if (types.length === 0) {
+            if (uniqueTypes.length === 0) {
                 issues.push('No structured data found');
             }
 
             return {
-                types: [...new Set(types)], // Remove duplicates
+                types: uniqueTypes,
                 totalSchemas: types.length,
                 jsonLdCount: jsonLdScripts.length,
                 microdataCount: microdataItems.length,
                 issues,
-                score: Math.max(0, Math.min(100, types.length > 0 ? (types.length * 20) + (100 - (issues.length * 15)) : 0))
+                // New AI-era fields
+                businessType: businessTypeResult,
+                schemaFields: schemaAnalysis.presentFields,
+                missingFields: schemaAnalysis.missingFields,
+                aiReadinessScore,
+                fieldCoveragePercent: schemaAnalysis.coveragePercent,
+                // Legacy score for backward compatibility
+                score: aiReadinessScore
             };
         } catch (error) {
             throw new Error(`Schema check failed: ${error.message}`);
         }
+    }
+
+    // Detect business type from schema types (multilingual safe)
+    detectBusinessType(schemaTypes, businessTypesConfig, $, url) {
+        // Priority order: specific to general
+        const businessTypeOrder = ['LocalBusiness', 'Product', 'SoftwareApplication', 'Organization', 'WebPage'];
+        
+        // Check schema-based detection first (multilingual safe)
+        for (const businessType of businessTypeOrder) {
+            const config = businessTypesConfig[businessType];
+            if (config && config.identifyingSchemas) {
+                const hasMatchingSchema = config.identifyingSchemas.some(schema => 
+                    schemaTypes.some(type => type.includes(schema))
+                );
+                if (hasMatchingSchema) {
+                    return {
+                        type: businessType,
+                        confidence: 'high',
+                        method: 'schema',
+                        detected: config.name
+                    };
+                }
+            }
+        }
+
+        // Fallback: keyword-based detection (English-only, flagged)
+        const pageText = $('title, h1, h2, meta[name="description"]').text().toLowerCase();
+        for (const businessType of businessTypeOrder) {
+            const config = businessTypesConfig[businessType];
+            if (config && config.fallbackKeywords) {
+                const keywordMatches = config.fallbackKeywords.filter(keyword => 
+                    pageText.includes(keyword)
+                ).length;
+                
+                if (keywordMatches >= 2) { // Require at least 2 keyword matches
+                    return {
+                        type: businessType,
+                        confidence: 'medium',
+                        method: 'keywords-en',
+                        detected: config.name,
+                        language: 'en',
+                        scope: 'english-only'
+                    };
+                }
+            }
+        }
+
+        // Default fallback
+        return {
+            type: 'WebPage',
+            confidence: 'low',
+            method: 'default',
+            detected: 'General Website'
+        };
+    }
+
+    // Analyze schema fields present vs required for business type
+    analyzeSchemaFields(schemaData, businessTypeResult, businessTypesConfig) {
+        const businessType = businessTypeResult.type;
+        const requiredFields = businessTypesConfig[businessType]?.requiredFields || {};
+        
+        const presentFields = {};
+        const missingFields = {};
+        
+        // Check each required field
+        Object.keys(requiredFields).forEach(fieldPath => {
+            const isPresent = this.isSchemaFieldPresent(schemaData, fieldPath);
+            if (isPresent) {
+                presentFields[fieldPath] = requiredFields[fieldPath]; // Store point value
+            } else {
+                missingFields[fieldPath] = requiredFields[fieldPath]; // Store point value
+            }
+        });
+
+        const totalPossiblePoints = Object.values(requiredFields).reduce((sum, points) => sum + points, 0);
+        const earnedPoints = Object.values(presentFields).reduce((sum, points) => sum + points, 0);
+        const coveragePercent = totalPossiblePoints > 0 ? Math.round((earnedPoints / totalPossiblePoints) * 100) : 0;
+
+        return {
+            presentFields,
+            missingFields,
+            earnedPoints,
+            totalPossiblePoints,
+            coveragePercent
+        };
+    }
+
+    // Check if a specific schema field is present in the data
+    isSchemaFieldPresent(schemaData, fieldPath) {
+        const pathParts = fieldPath.split('.');
+        
+        return schemaData.some(data => {
+            return this.searchObjectForPath(data, pathParts, 0);
+        });
+    }
+
+    // Recursively search object for field path
+    searchObjectForPath(obj, pathParts, currentIndex) {
+        if (!obj || typeof obj !== 'object') return false;
+        if (currentIndex >= pathParts.length) return true;
+        
+        const currentPart = pathParts[currentIndex];
+        
+        // Handle arrays
+        if (Array.isArray(obj)) {
+            return obj.some(item => this.searchObjectForPath(item, pathParts, currentIndex));
+        }
+        
+        // Check if current part exists in object
+        if (obj[currentPart] !== undefined && obj[currentPart] !== null && obj[currentPart] !== '') {
+            if (currentIndex === pathParts.length - 1) {
+                return true; // Found the final field
+            }
+            return this.searchObjectForPath(obj[currentPart], pathParts, currentIndex + 1);
+        }
+        
+        // Also check nested objects recursively
+        return Object.values(obj).some(value => {
+            if (typeof value === 'object') {
+                return this.searchObjectForPath(value, pathParts, currentIndex);
+            }
+            return false;
+        });
+    }
+
+    // Calculate AI-readiness score based on schema coverage
+    calculateAIReadinessScore(schemaAnalysis, businessTypeResult, businessTypesConfig) {
+        // Base score from schema field coverage
+        let score = schemaAnalysis.coveragePercent;
+        
+        // Bonus for high-confidence business type detection
+        if (businessTypeResult.confidence === 'high') {
+            score += 5; // Schema-based detection bonus
+        }
+        
+        // Penalty for English-only fallback detection
+        if (businessTypeResult.method === 'keywords-en') {
+            score -= 10; // Reduce confidence for language-dependent detection
+        }
+        
+        return Math.max(0, Math.min(100, score));
     }
 
     // Helper function to recursively extract types from JSON-LD data
@@ -513,6 +734,84 @@ class OptimizedAuditOrchestrator {
         logger.info('Performing enhanced Puppeteer audit');
         // ... enhanced audit logic here
         return await this.performLightweightAudit(url, options); // Fallback for now
+    }
+
+    // Lighthouse performance check using optional dependency
+    async checkLighthousePerformance(url) {
+        try {
+            const lighthouse = await this.loadLighthouse();
+            if (!lighthouse) {
+                logger.warn('Lighthouse not available, skipping performance audit');
+                return {
+                    error: 'Lighthouse not installed',
+                    fallback: true,
+                    message: 'Install lighthouse dependency for enhanced performance metrics'
+                };
+            }
+
+            const chromeLauncher = require('chrome-launcher');
+            
+            // Launch Chrome
+            const chrome = await chromeLauncher.launch({chromeFlags: ['--headless', '--no-sandbox', '--disable-gpu']});
+            
+            try {
+                // Run Lighthouse
+                const options = {
+                    logLevel: 'error',
+                    output: 'json',
+                    onlyCategories: ['performance'],
+                    port: chrome.port,
+                };
+                
+                const runnerResult = await lighthouse.default ? 
+                    await lighthouse.default(url, options) : 
+                    await lighthouse(url, options);
+                const report = runnerResult.lhr;
+                
+                // Extract key metrics
+                const performance = report.categories.performance;
+                const audits = report.audits;
+                
+                return {
+                    score: Math.round(performance.score * 100),
+                    metrics: {
+                        firstContentfulPaint: audits['first-contentful-paint']?.displayValue || 'N/A',
+                        largestContentfulPaint: audits['largest-contentful-paint']?.displayValue || 'N/A',
+                        firstInputDelay: audits['max-potential-fid']?.displayValue || 'N/A',
+                        cumulativeLayoutShift: audits['cumulative-layout-shift']?.displayValue || 'N/A',
+                        speedIndex: audits['speed-index']?.displayValue || 'N/A',
+                        totalBlockingTime: audits['total-blocking-time']?.displayValue || 'N/A'
+                    },
+                    opportunities: report.categories.performance.auditRefs
+                        .filter(ref => audits[ref.id]?.details?.type === 'opportunity')
+                        .map(ref => ({
+                            title: audits[ref.id].title,
+                            description: audits[ref.id].description,
+                            score: audits[ref.id].score,
+                            displayValue: audits[ref.id].displayValue
+                        }))
+                        .slice(0, 5), // Top 5 opportunities
+                    diagnostics: report.categories.performance.auditRefs
+                        .filter(ref => audits[ref.id]?.details?.type === 'diagnostic')
+                        .map(ref => ({
+                            title: audits[ref.id].title,
+                            description: audits[ref.id].description,
+                            score: audits[ref.id].score,
+                            displayValue: audits[ref.id].displayValue
+                        }))
+                        .slice(0, 3) // Top 3 diagnostics
+                };
+            } finally {
+                await chrome.kill();
+            }
+        } catch (error) {
+            logger.warn('Lighthouse audit failed:', error.message);
+            return {
+                error: 'Lighthouse audit failed',
+                message: error.message,
+                fallback: true
+            };
+        }
     }
 }
 

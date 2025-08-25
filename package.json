@@ -2,7 +2,7 @@
   "name": "seo-audit-tool-optimized",
   "version": "2.1.0",
   "description": "Academic-grade SEO audit tool with modern UX",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

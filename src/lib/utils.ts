@@ -133,6 +133,12 @@ export function getWittyCopy(type: string, score: number): string {
       good: "Accessibility compliance looking solid 👌",
       warning: "Some users might feel left out 😕",
       poor: "Accessibility barriers higher than academic paywalls 🚧"
+    },
+    schema: {
+      excellent: "AI-readiness level: PhD dissertation 🎓",
+      good: "Schema markup that makes AI assistants happy 🤖",
+      warning: "Your structured data needs some structure 📊",
+      poor: "Machines are confused, humans are lost 🤷"
     }
   };
 

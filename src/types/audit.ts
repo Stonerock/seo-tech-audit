@@ -114,6 +114,19 @@ export interface SchemaResult {
   microdataCount: number;
   issues: string[];
   score: number;
+  // New AI-era fields
+  businessType?: {
+    type: string;
+    confidence: 'high' | 'medium' | 'low';
+    method: 'schema' | 'keywords-en' | 'default';
+    detected: string;
+    language?: string;
+    scope?: 'english-only';
+  };
+  schemaFields?: Record<string, number>;
+  missingFields?: Record<string, number>;
+  aiReadinessScore?: number;
+  fieldCoveragePercent?: number;
 }
 
 // Options for audit requests
