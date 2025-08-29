@@ -10,14 +10,16 @@ class OptimizedAuditOrchestrator {
         this.aiAnalyzer = null;
         this.perfAnalyzer = null;
         this.botAnalyzer = null;
+        this.eatAnalyzer = null; // E-A-T analysis for content authority
         this.jsRenderer = null; // Lightweight JavaScript renderer
         
         // Performance optimization settings
         this.requestCache = new Map();
         this.maxResponseSize = 3 * 1024 * 1024; // 3MB limit (reduced)
-        this.requestTimeout = 4000; // 4 second timeout (more aggressive)
+        this.requestTimeout = 8000; // 8 second timeout (improved for dynamic sites)
         this.maxRedirects = 2; // Reduced redirects
         this.cacheTimeout = 5 * 60 * 1000; // 5 minutes (longer cache)
+        this.dynamicSiteTimeout = 15000; // 15 second timeout for suspected dynamic sites
     }
 
     // Shared HTML fetcher to avoid duplicate requests  
@@ -53,7 +55,7 @@ class OptimizedAuditOrchestrator {
         try {
             const fetch = require('node-fetch');
             const response = await fetch(url, {
-                timeout: this.requestTimeout,
+                timeout: options.adaptiveTimeout ? this.dynamicSiteTimeout : this.requestTimeout,
                 redirect: 'manual',
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (compatible; AttentionBot/1.0; +https://attentionisallyouneed.app)',
@@ -114,7 +116,13 @@ class OptimizedAuditOrchestrator {
             return data;
         } catch (error) {
             if (error.name === 'AbortError' || error.code === 'ECONNABORTED') {
-                throw new Error(`Request timeout after ${this.requestTimeout}ms`);
+                // Provide more helpful error messages for dynamic sites
+                const isDynamic = this.isDynamicSiteError(error);
+                if (isDynamic) {
+                    throw new Error(`Site appears to be JavaScript-heavy or dynamic. Static analysis may be incomplete. Consider enabling JavaScript rendering for full results.`);
+                } else {
+                    throw new Error(`Request timeout after ${this.requestTimeout}ms`);
+                }
             }
             throw error;
         }
@@ -233,25 +241,52 @@ class OptimizedAuditOrchestrator {
         }
     }
 
+    // Helper to detect if errors are likely from dynamic sites
+    isDynamicSiteError(error) {
+        const errorMsg = error.message?.toLowerCase() || '';
+        const errorCode = error.code || '';
+        
+        // Common patterns for dynamic sites that cause timeouts/stalls
+        const dynamicIndicators = [
+            'timeout',
+            'econnaborted',
+            'socket hang up',
+            'network timeout',
+            'request timeout',
+            'connection timeout'
+        ];
+        
+        return dynamicIndicators.some(indicator => 
+            errorMsg.includes(indicator) || errorCode.includes(indicator.toUpperCase())
+        );
+    }
+
     // Fast, lightweight audit that works without heavy dependencies
     async performLightweightAudit(url, options = {}) {
         const startTime = Date.now();
-        logger.info(`Starting lightweight audit for: ${url}`);
+        logger.info(`Starting lightweight audit for: ${url}`, { options });
 
         try {
-            // Global timeout for entire audit (never exceed 15 seconds)
+            // Global timeout for entire audit - adaptive based on site complexity
+            const globalTimeoutMs = options.fastMode ? 25000 : 45000;
             const auditTimeout = setTimeout(() => {
-                throw new Error('Audit timeout exceeded 15 seconds');
-            }, 15000);
+                throw new Error(`Audit timeout exceeded ${globalTimeoutMs / 1000} seconds`);
+            }, globalTimeoutMs);
 
-            // Parallel execution of lightweight checks
+            // Parallel execution of lightweight checks with adaptive timeouts
+            const auditOptions = { 
+                ...options, 
+                adaptiveTimeout: options.fastMode ? false : true // Use longer timeouts for non-fast mode
+            };
+            
             const checks = [
-                this.checkBasicSEO(url),
-                this.checkBasicPerformance(url),
-                this.checkBasicAccessibility(url),
-                this.checkBasicFiles(url),
-                this.checkBasicMetadata(url),
-                this.checkBasicSchema(url)
+                this.checkBasicSEO(url, auditOptions),
+                this.checkBasicPerformance(url, auditOptions),
+                this.checkBasicAccessibility(url, auditOptions),
+                this.checkBasicFiles(url, auditOptions),
+                this.checkBasicMetadata(url, auditOptions),
+                this.checkBasicSchema(url, auditOptions),
+                this.checkEATSignals(url, auditOptions)
             ];
 
             // Add Lighthouse check if requested (but skip if too slow)
@@ -261,7 +296,7 @@ class OptimizedAuditOrchestrator {
             }
 
             // Add AEO (Answer Engine Optimization) analysis
-            checks.push(this.checkAEOReadiness(url));
+            checks.push(this.checkAEOReadiness(url, auditOptions));
 
             const results = await Promise.allSettled(checks);
             clearTimeout(auditTimeout);
@@ -276,14 +311,24 @@ class OptimizedAuditOrchestrator {
                     accessibility: results[2].status === 'fulfilled' ? results[2].value : { error: results[2].reason?.message },
                     files: results[3].status === 'fulfilled' ? results[3].value : { error: results[3].reason?.message },
                     metadata: results[4].status === 'fulfilled' ? results[4].value : { error: results[4].reason?.message },
-                    schema: results[5].status === 'fulfilled' ? results[5].value : { error: results[5].reason?.message }
+                    schema: results[5].status === 'fulfilled' ? results[5].value : { error: results[5].reason?.message },
+                    eat: results[6].status === 'fulfilled' ? results[6].value : { error: results[6].reason?.message }
                 },
                 mode: options.includeLighthouse ? 'enhanced' : 'lightweight'
             };
+            
+            // Debug logging for mode and jsAnalysis
+            console.log('[DEBUG] Lightweight audit results:', {
+                mode: auditResults.mode,
+                jsAnalysis: auditResults.tests.seo?.jsAnalysis || 'not set',
+                seoStatus: results[0].status,
+                hasTests: !!auditResults.tests,
+                testsKeys: Object.keys(auditResults.tests)
+            });
 
             // Add lighthouse results if available
-            const lighthouseIndex = options.includeLighthouse ? 6 : -1;
-            const aeoIndex = options.includeLighthouse ? 7 : 6;
+            const lighthouseIndex = options.includeLighthouse ? 7 : -1;
+            const aeoIndex = options.includeLighthouse ? 8 : 7;
             
             if (options.includeLighthouse && results[lighthouseIndex]) {
                 auditResults.tests.lighthouse = results[lighthouseIndex].status === 'fulfilled' ? 
@@ -296,10 +341,68 @@ class OptimizedAuditOrchestrator {
                     results[aeoIndex].value : { error: results[aeoIndex].reason?.message };
             }
 
+            // Add PageSpeed Insights data if API key is available and not in fast mode
+            if (process.env.PAGESPEED_API_KEY && options.includePSI !== false && !options.fastMode) {
+                logger.info('Adding PageSpeed Insights data to lightweight audit...');
+                try {
+                    const { PageSpeedInsights } = require('./pagespeed-insights');
+                    const psi = new PageSpeedInsights();
+                    const psiData = await psi.getInsights(url, {
+                        categories: 'performance,seo,accessibility'
+                    });
+                    
+                    if (psiData) {
+                        auditResults.psiMetrics = psiData;
+                        auditResults.tests.performance = {
+                            ...auditResults.tests.performance,
+                            psi: psiData.performance || null,
+                            coreWebVitals: psiData.performance?.coreWebVitals || null
+                        };
+                        logger.info('PageSpeed Insights added to lightweight audit');
+                    }
+                } catch (psiError) {
+                    logger.warn('PageSpeed Insights failed in lightweight audit:', psiError.message);
+                }
+            }
+
             logger.info(`${auditResults.mode} audit completed in ${auditResults.executionTime}ms`);
             return auditResults;
 
         } catch (error) {
+            console.error('[AUDIT_FAIL] Lightweight audit failed:', {
+                name: error?.name, 
+                message: error?.message, 
+                code: error?.code,
+                stack: error?.stack?.split('\n').slice(0, 6),
+                url: url,
+                options: options
+            });
+            
+            // Check if this is a dynamic site that needs different handling
+            const isDynamic = this.isDynamicSiteError(error);
+            if (isDynamic && !options.retryAttempt) {
+                logger.info('Retrying with adaptive timeout for suspected dynamic site');
+                try {
+                    return await this.performLightweightAudit(url, {
+                        ...options,
+                        adaptiveTimeout: true,
+                        retryAttempt: true
+                    });
+                } catch (retryError) {
+                    logger.warn('Retry with adaptive timeout also failed');
+                    // Enhance error message for dynamic sites
+                    const enhancedError = new Error(
+                        `Analysis failed: Site appears to be JavaScript-heavy or has slow loading times. ` +
+                        `Static HTML analysis may be incomplete. Consider: 1) Enabling JavaScript rendering ` +
+                        `if available, 2) Testing on a faster/simpler page, 3) Checking if the site ` +
+                        `blocks our crawler (robots.txt or firewall).`
+                    );
+                    enhancedError.originalError = retryError;
+                    enhancedError.isDynamicSite = true;
+                    throw enhancedError;
+                }
+            }
+            
             logger.error('Lightweight audit failed:', error);
             throw error;
         }
@@ -317,20 +420,27 @@ class OptimizedAuditOrchestrator {
             
             // Check if JavaScript rendering is needed
             const jsAnalysis = staticResults.tests.seo?.jsAnalysis;
-            const shouldUseJS = jsAnalysis?.needsJS && jsAnalysis.confidence !== 'low';
+            // Use JS rendering for medium+ confidence or when explicitly requested
+            const shouldUseJS = (jsAnalysis?.needsJS && jsAnalysis.confidence !== 'low') || options.forceJS === true;
             
             logger.info(`JavaScript detection: needsJS=${jsAnalysis?.needsJS}, confidence=${jsAnalysis?.confidence}`);
             logger.info(`Recommendation: ${jsAnalysis?.recommendation}`);
 
             // Phase 2: JavaScript rendering (if needed and enabled)
             let jsResults = null;
-            if (shouldUseJS && options.enableJS !== false) {
+            if (shouldUseJS && options.enableJS === true) {
                 logger.info('Phase 2: JavaScript rendering analysis');
                 
                 const jsRenderer = await this.loadJSRenderer();
                 if (jsRenderer) {
                     try {
-                        const renderResult = await jsRenderer.renderPage(url);
+                        // Enable Lighthouse for performance analysis when requested
+                        const renderOptions = {
+                            includePerformance: options.includeLighthouse !== false, // Default to true
+                            includeScreenshot: options.includeScreenshot !== false,
+                            timeout: options.timeout || 30000
+                        };
+                        const renderResult = await jsRenderer.renderPage(url, renderOptions);
                         
                         // Re-analyze with rendered content
                         const cheerio = require('cheerio');
@@ -342,7 +452,11 @@ class OptimizedAuditOrchestrator {
                             accessibility: await this.analyzeRenderedAccessibility($js),
                             schema: await this.analyzeRenderedSchema($js),
                             metrics: renderResult.metrics,
-                            jsMetrics: renderResult.jsMetrics
+                            jsMetrics: renderResult.jsMetrics,
+                            // Include Lighthouse performance data if available
+                            lighthouse: renderResult.lighthouse || null,
+                            screenshot: renderResult.screenshot || null,
+                            analysisType: renderResult.analysisType || 'content'
                         };
                         
                         logger.info('JavaScript rendering completed successfully');
@@ -380,10 +494,37 @@ class OptimizedAuditOrchestrator {
                     }
                 }
             };
+            
+            // Debug logging for two-pass audit
+            console.log('[DEBUG] Two-pass audit results:', {
+                mode: combinedResults.mode,
+                jsAnalysis: jsAnalysis,
+                shouldUseJS: shouldUseJS,
+                jsResultsAvailable: !!jsResults,
+                jsResultsError: jsResults?.error,
+                staticResultsMode: staticResults.mode
+            });
 
             // Merge JS results if available
             if (jsResults && !jsResults.error) {
                 combinedResults.tests.jsRendered = jsResults;
+                
+                // Add Lighthouse performance data if available
+                if (jsResults.lighthouse) {
+                    combinedResults.tests.performance = {
+                        ...combinedResults.tests.performance,
+                        lighthouse: jsResults.lighthouse,
+                        analysisType: 'lighthouse',
+                        coreWebVitals: this.extractCoreWebVitals(jsResults.lighthouse),
+                        scores: this.extractLighthouseScores(jsResults.lighthouse)
+                    };
+                }
+                
+                // Add screenshot if available
+                if (jsResults.screenshot) {
+                    combinedResults.artifacts = combinedResults.artifacts || {};
+                    combinedResults.artifacts.screenshot = jsResults.screenshot;
+                }
                 
                 // Update confidence indicators
                 combinedResults.tests.seo.analysisMethod = 'hybrid';
@@ -393,10 +534,42 @@ class OptimizedAuditOrchestrator {
                 }
             }
 
+            // Add PageSpeed Insights data if API key is available and not in fast mode
+            if (process.env.PAGESPEED_API_KEY && options.includePSI !== false && !options.fastMode) {
+                logger.info('Fetching PageSpeed Insights data...');
+                try {
+                    const { PageSpeedInsights } = require('./pagespeed-insights');
+                    const psi = new PageSpeedInsights();
+                    const psiData = await psi.getInsights(url, {
+                        categories: 'performance,seo,accessibility'
+                    });
+                    
+                    if (psiData) {
+                        combinedResults.psiMetrics = psiData;
+                        combinedResults.tests.performance = {
+                            ...combinedResults.tests.performance,
+                            psi: psiData.performance || null,
+                            coreWebVitals: psiData.performance?.coreWebVitals || null
+                        };
+                        logger.info('PageSpeed Insights data added successfully');
+                    }
+                } catch (psiError) {
+                    logger.warn('PageSpeed Insights failed:', psiError.message);
+                }
+            }
+
             logger.info(`Two-pass audit completed in ${combinedResults.executionTime}ms`);
             return combinedResults;
 
         } catch (error) {
+            console.error('[AUDIT_FAIL] Two-pass audit failed:', {
+                name: error?.name, 
+                message: error?.message, 
+                code: error?.code,
+                stack: error?.stack?.split('\n').slice(0, 6),
+                url: url,
+                options: options
+            });
             logger.error('Two-pass audit failed:', error);
             throw error;
         }
@@ -481,11 +654,13 @@ class OptimizedAuditOrchestrator {
     }
 
     // Basic SEO check using optimized HTTP client
-    async checkBasicSEO(url) {
+    async checkBasicSEO(url, options = {}) {
         const cheerio = require('cheerio');
 
         try {
-            const response = await this.makeOptimizedRequest(url);
+            const response = await this.makeOptimizedRequest(url, { 
+                adaptiveTimeout: options.adaptiveTimeout 
+            });
             
             if (response.status >= 400) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -615,7 +790,7 @@ class OptimizedAuditOrchestrator {
     }
 
     // Basic performance check using simple HTTP metrics
-    async checkBasicPerformance(url) {
+    async checkBasicPerformance(url, options = {}) {
         try {
             const startTime = Date.now();
             const response = await this.makeOptimizedRequest(url, { includeBody: false });
@@ -654,7 +829,7 @@ class OptimizedAuditOrchestrator {
     }
 
     // Basic accessibility check using cheerio
-    async checkBasicAccessibility(url) {
+    async checkBasicAccessibility(url, options = {}) {
         const fetch = require('node-fetch');
         const cheerio = require('cheerio');
 
@@ -721,7 +896,7 @@ class OptimizedAuditOrchestrator {
     }
 
     // Check for basic files (robots.txt, sitemap variants, etc.)
-    async checkBasicFiles(url) {
+    async checkBasicFiles(url, options = {}) {
         const fetch = require('node-fetch');
         const baseUrl = new URL(url).origin;
 
@@ -784,11 +959,29 @@ class OptimizedAuditOrchestrator {
                 }
             }
 
+            // Analyze robots.txt content with bot policy analyzer
+            let robotsAnalysis = {
+                exists: robotsResponse.status === 'fulfilled' && robotsResponse.value.ok,
+                url: `${baseUrl}/robots.txt`
+            };
+
+            if (robotsAnalysis.exists) {
+                try {
+                    if (!this.botAnalyzer) {
+                        const BotPolicyAnalyzer = require('./bot-policy-analyzer');
+                        this.botAnalyzer = new BotPolicyAnalyzer();
+                    }
+                    
+                    const robotsText = await robotsResponse.value.text();
+                    const botPolicyResults = await this.botAnalyzer.analyzeRobotsTxt(robotsText, baseUrl);
+                    robotsAnalysis.botPolicyAnalysis = botPolicyResults;
+                } catch (error) {
+                    console.warn('Bot policy analysis failed:', error.message);
+                }
+            }
+
             return {
-                robots: {
-                    exists: robotsResponse.status === 'fulfilled' && robotsResponse.value.ok,
-                    url: `${baseUrl}/robots.txt`
-                },
+                robots: robotsAnalysis,
                 sitemap: sitemapResult,
                 rss: {
                     exists: rssResponse.status === 'fulfilled' && rssResponse.value.ok,
@@ -805,7 +998,7 @@ class OptimizedAuditOrchestrator {
     }
 
     // Basic metadata extraction
-    async checkBasicMetadata(url) {
+    async checkBasicMetadata(url, options = {}) {
         const fetch = require('node-fetch');
         const cheerio = require('cheerio');
 
@@ -858,7 +1051,7 @@ class OptimizedAuditOrchestrator {
     }
 
     // Enhanced schema detection with business type analysis and AI-readiness scoring
-    async checkBasicSchema(url) {
+    async checkBasicSchema(url, options = {}) {
         const fetch = require('node-fetch');
         const cheerio = require('cheerio');
         const path = require('path');
@@ -975,10 +1168,16 @@ class OptimizedAuditOrchestrator {
             // Calculate AI-readiness score based on schema coverage
             const aiReadinessScore = this.calculateAIReadinessScore(schemaAnalysis, businessTypeResult, businessTypesConfig);
 
+            // Content validation - check for mismatches between schema and visible content
+            const contentValidation = this.validateSchemaContentMatch(schemaData, $);
+
             // Basic validation
             if (uniqueTypes.length === 0) {
                 issues.push('No structured data found');
             }
+            
+            // Add content validation issues
+            issues.push(...contentValidation.issues);
 
             return {
                 types: uniqueTypes,
@@ -992,6 +1191,7 @@ class OptimizedAuditOrchestrator {
                 missingFields: schemaAnalysis.missingFields,
                 aiReadinessScore,
                 fieldCoveragePercent: schemaAnalysis.coveragePercent,
+                contentValidation: contentValidation,
                 // Legacy score for backward compatibility
                 score: aiReadinessScore
             };
@@ -1282,7 +1482,7 @@ class OptimizedAuditOrchestrator {
     }
 
     // AEO (Answer Engine Optimization) readiness analysis - optimized
-    async checkAEOReadiness(url) {
+    async checkAEOReadiness(url, options = {}) {
         try {
             const pageContent = await this.getPageContent(url);
             const { $, html } = pageContent;
@@ -1324,7 +1524,26 @@ class OptimizedAuditOrchestrator {
                 }, 0);
             }
 
-            // 3. Heading Structure Analysis (multilingual safe)
+            // 3. Enhanced Heading Structure Analysis (multilingual safe)
+            // Extract detailed heading information for enhanced analysis
+            const headingElements = [];
+            $('h1, h2, h3, h4, h5, h6').each((i, el) => {
+                headingElements.push({
+                    level: parseInt(el.tagName.slice(1)),
+                    text: $(el).text().trim(),
+                    id: $(el).attr('id') || null
+                });
+            });
+
+            // Use enhanced AI analyzer for detailed heading analysis
+            if (!this.aiAnalyzer) {
+                const AIContentAnalyzer = require('./ai-analyzer');
+                this.aiAnalyzer = new AIContentAnalyzer();
+            }
+            
+            const detailedHeadingAnalysis = this.aiAnalyzer.analyzeHeadingStructure(headingElements);
+            
+            // Basic counts for compatibility
             const headings = {
                 h1: $('h1').length,
                 h2: $('h2').length,
@@ -1334,8 +1553,8 @@ class OptimizedAuditOrchestrator {
                 h6: $('h6').length
             };
 
-            const hasHierarchy = headings.h1 > 0 && headings.h2 > 0;
-            const hierarchyDepth = Object.values(headings).filter(count => count > 0).length;
+            const hasHierarchy = detailedHeadingAnalysis.details.hierarchyValid && headings.h1 > 0;
+            const hierarchyDepth = detailedHeadingAnalysis.details.nestingDepth;
 
             // 4. List Structure Detection (multilingual safe)
             const lists = {
@@ -1376,7 +1595,11 @@ class OptimizedAuditOrchestrator {
                     hierarchy: hasHierarchy,
                     depth: hierarchyDepth,
                     counts: headings,
-                    scope: 'multilingual-safe'
+                    scope: 'multilingual-safe',
+                    detailsAnalysis: detailedHeadingAnalysis.details,
+                    analysisScore: detailedHeadingAnalysis.score,
+                    analysisIssues: detailedHeadingAnalysis.issues,
+                    analysisStrengths: detailedHeadingAnalysis.strengths
                 },
                 lists: {
                     ...lists,
@@ -1539,6 +1762,252 @@ class OptimizedAuditOrchestrator {
         }
         
         return recommendations;
+    }
+
+    // Extract Core Web Vitals from Lighthouse results
+    extractCoreWebVitals(lighthouseData) {
+        try {
+            const audits = lighthouseData.audits || lighthouseData.lhr?.audits || {};
+            
+            return {
+                fcp: {
+                    value: audits['first-contentful-paint']?.displayValue || 'N/A',
+                    score: audits['first-contentful-paint']?.score || 0,
+                    numericValue: audits['first-contentful-paint']?.numericValue || null
+                },
+                lcp: {
+                    value: audits['largest-contentful-paint']?.displayValue || 'N/A',
+                    score: audits['largest-contentful-paint']?.score || 0,
+                    numericValue: audits['largest-contentful-paint']?.numericValue || null
+                },
+                cls: {
+                    value: audits['cumulative-layout-shift']?.displayValue || 'N/A',
+                    score: audits['cumulative-layout-shift']?.score || 0,
+                    numericValue: audits['cumulative-layout-shift']?.numericValue || null
+                },
+                fid: {
+                    value: audits['max-potential-fid']?.displayValue || 'N/A',
+                    score: audits['max-potential-fid']?.score || 0,
+                    numericValue: audits['max-potential-fid']?.numericValue || null
+                },
+                speedIndex: {
+                    value: audits['speed-index']?.displayValue || 'N/A',
+                    score: audits['speed-index']?.score || 0,
+                    numericValue: audits['speed-index']?.numericValue || null
+                },
+                tbt: {
+                    value: audits['total-blocking-time']?.displayValue || 'N/A',
+                    score: audits['total-blocking-time']?.score || 0,
+                    numericValue: audits['total-blocking-time']?.numericValue || null
+                }
+            };
+        } catch (error) {
+            logger.warn('Failed to extract Core Web Vitals:', error.message);
+            return {};
+        }
+    }
+
+    // Extract Lighthouse category scores
+    extractLighthouseScores(lighthouseData) {
+        try {
+            const categories = lighthouseData.categories || lighthouseData.lhr?.categories || {};
+            
+            return {
+                performance: Math.round((categories.performance?.score || 0) * 100),
+                accessibility: Math.round((categories.accessibility?.score || 0) * 100),
+                bestPractices: Math.round((categories['best-practices']?.score || 0) * 100),
+                seo: Math.round((categories.seo?.score || 0) * 100),
+                pwa: Math.round((categories.pwa?.score || 0) * 100)
+            };
+        } catch (error) {
+            logger.warn('Failed to extract Lighthouse scores:', error.message);
+            return {};
+        }
+    }
+
+    // Validate schema content against visible page content
+    validateSchemaContentMatch(schemaData, $) {
+        const issues = [];
+        const warnings = [];
+        let validationScore = 100;
+
+        if (!schemaData || schemaData.length === 0) {
+            return { issues: [], warnings: [], score: 100, validItems: 0 };
+        }
+
+        // Get visible page content for comparison
+        const pageTitle = $('title').text().trim();
+        const pageDescription = $('meta[name="description"]').attr('content') || '';
+        const visibleText = $('body').text().toLowerCase().trim();
+        const headings = $('h1, h2, h3').map((i, el) => $(el).text().trim()).get().join(' ').toLowerCase();
+
+        let validItems = 0;
+        let totalChecks = 0;
+
+        schemaData.forEach((schema, index) => {
+            if (!schema) return;
+
+            const schemaArray = Array.isArray(schema) ? schema : [schema];
+            
+            schemaArray.forEach((item) => {
+                if (!item || typeof item !== 'object') return;
+
+                // Validate common schema fields
+                const schemaName = item.name || item.headline || item.title;
+                const schemaDescription = item.description;
+                const schemaAuthor = item.author?.name || item.author;
+
+                // Check title/name consistency
+                if (schemaName && pageTitle) {
+                    totalChecks++;
+                    const similarity = this.calculateStringSimilarity(
+                        schemaName.toLowerCase().trim(), 
+                        pageTitle.toLowerCase().trim()
+                    );
+                    if (similarity > 0.5) {
+                        validItems++;
+                    } else if (similarity < 0.2) {
+                        issues.push(`Schema name "${schemaName}" doesn't match page title "${pageTitle}"`);
+                        validationScore -= 15;
+                    } else {
+                        warnings.push(`Schema name partially matches page title (${Math.round(similarity * 100)}% similarity)`);
+                        validationScore -= 5;
+                    }
+                }
+
+                // Check description consistency
+                if (schemaDescription && pageDescription) {
+                    totalChecks++;
+                    const similarity = this.calculateStringSimilarity(
+                        schemaDescription.toLowerCase().trim(),
+                        pageDescription.toLowerCase().trim()
+                    );
+                    if (similarity > 0.3) {
+                        validItems++;
+                    } else {
+                        warnings.push(`Schema description may not match page meta description`);
+                        validationScore -= 10;
+                    }
+                }
+
+                // For FAQ schemas, check if questions exist on page
+                if (item['@type'] === 'FAQPage' && item.mainEntity) {
+                    const questions = Array.isArray(item.mainEntity) ? item.mainEntity : [item.mainEntity];
+                    questions.forEach(q => {
+                        if (q.name) {
+                            totalChecks++;
+                            const questionExists = visibleText.includes(q.name.toLowerCase()) || 
+                                                 headings.includes(q.name.toLowerCase());
+                            if (questionExists) {
+                                validItems++;
+                            } else {
+                                issues.push(`FAQ question "${q.name}" not found in visible content`);
+                                validationScore -= 10;
+                            }
+                        }
+                    });
+                }
+
+                // For Organization schemas, check if organization name appears on page
+                if (item['@type'] === 'Organization' && item.name) {
+                    totalChecks++;
+                    if (visibleText.includes(item.name.toLowerCase()) || 
+                        pageTitle.toLowerCase().includes(item.name.toLowerCase())) {
+                        validItems++;
+                    } else {
+                        warnings.push(`Organization name "${item.name}" not prominently displayed on page`);
+                        validationScore -= 8;
+                    }
+                }
+            });
+        });
+
+        return {
+            issues: issues.slice(0, 5), // Limit to top 5 issues to avoid overwhelming
+            warnings: warnings.slice(0, 3), // Limit to top 3 warnings
+            score: Math.max(0, validationScore),
+            validItems,
+            totalChecks,
+            matchPercentage: totalChecks > 0 ? Math.round((validItems / totalChecks) * 100) : 100
+        };
+    }
+
+    // Simple string similarity calculation using Levenshtein distance
+    calculateStringSimilarity(str1, str2) {
+        const track = Array(str2.length + 1).fill(null).map(() =>
+            Array(str1.length + 1).fill(null));
+        
+        for (let i = 0; i <= str1.length; i++) {
+            track[0][i] = i;
+        }
+        for (let j = 0; j <= str2.length; j++) {
+            track[j][0] = j;
+        }
+        
+        for (let j = 1; j <= str2.length; j++) {
+            for (let i = 1; i <= str1.length; i++) {
+                const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+                track[j][i] = Math.min(
+                    track[j][i - 1] + 1,
+                    track[j - 1][i] + 1,
+                    track[j - 1][i - 1] + indicator
+                );
+            }
+        }
+        
+        const distance = track[str2.length][str1.length];
+        const maxLength = Math.max(str1.length, str2.length);
+        return maxLength === 0 ? 1 : (maxLength - distance) / maxLength;
+    }
+
+    // E-A-T (Expertise, Authoritativeness, Trustworthiness) analysis
+    async checkEATSignals(url, options = {}) {
+        try {
+            // Lazy load E-A-T analyzer
+            if (!this.eatAnalyzer) {
+                const EATAnalyzer = require('./eat-analyzer');
+                this.eatAnalyzer = new EATAnalyzer();
+            }
+
+            const response = await this.makeOptimizedRequest(url, { 
+                adaptiveTimeout: options.adaptiveTimeout 
+            });
+            
+            if (response.status >= 400) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const cheerio = require('cheerio');
+            const $ = cheerio.load(response.body);
+
+            // Get schema data for enhanced author analysis
+            const jsonLdScripts = $('script[type="application/ld+json"]');
+            const schemaData = [];
+            
+            jsonLdScripts.each((i, script) => {
+                try {
+                    const raw = $(script).text().trim();
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        schemaData.push(parsed);
+                    }
+                } catch (e) {
+                    // Skip invalid JSON-LD
+                }
+            });
+
+            // Perform comprehensive E-A-T analysis
+            const eatResults = await this.eatAnalyzer.analyzeEAT($, url, schemaData);
+
+            return {
+                ...eatResults,
+                url,
+                timestamp: new Date().toISOString()
+            };
+
+        } catch (error) {
+            throw new Error(`E-A-T analysis failed: ${error.message}`);
+        }
     }
 }
 

@@ -22,6 +22,10 @@ export function AEOAnalysis({ aeoResult }: AEOAnalysisProps) {
   const getScope = (scope?: 'multilingual-safe' | 'english-only'): 'multilingual-safe' | 'english-only' =>
     scope || 'multilingual-safe';
 
+  const languageDisplay = (typeof aeoResult.language === 'string' && aeoResult.language)
+    ? aeoResult.language.toUpperCase()
+    : 'UNKNOWN';
+
   return (
     <div className="border-t border-border pt-6">
       <div className="flex items-center gap-3 mb-4">
@@ -81,41 +85,158 @@ export function AEOAnalysis({ aeoResult }: AEOAnalysisProps) {
             </div>
           </div>
 
-          {/* Heading Structure */}
+          {/* Enhanced Heading Structure */}
           {aeoResult.headingStructure ? (
             <div className="bg-muted/30 p-4 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <h4 className="font-medium text-foreground">Content Structure</h4>
+              <div className="flex items-center gap-2 mb-3">
+                <h4 className="font-medium text-foreground">Heading Hierarchy</h4>
                 <ScopeBadge scope={getScope(aeoResult.headingStructure.scope)} />
               </div>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Hierarchy:</span>
-                  <span className={aeoResult.headingStructure.hierarchy ? 'text-green-600' : 'text-red-600'}>
-                    {aeoResult.headingStructure.hierarchy ? '✓' : '✗'}
-                  </span>
+              
+              <div className="space-y-3 text-sm">
+                {/* Basic hierarchy info */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Valid hierarchy:</span>
+                    <span className={aeoResult.headingStructure.hierarchy ? 'text-green-600' : 'text-red-600'}>
+                      {aeoResult.headingStructure.hierarchy ? '✓ Valid' : '✗ Issues'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Max depth:</span>
+                    <span className="text-foreground font-medium">
+                      H{aeoResult.headingStructure.depth}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Depth:</span>
-                  <span className="text-foreground font-medium">
-                    H1-H{aeoResult.headingStructure.depth}
-                  </span>
+
+                {/* Heading counts by level */}
+                <div className="border-t border-border/30 pt-2">
+                  <div className="text-xs text-muted-foreground mb-1">Heading distribution:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(aeoResult.headingStructure.counts || {})
+                      .filter(([, count]) => (count as number) > 0)
+                      .map(([tag, count]) => (
+                        <span key={tag} className={`px-2 py-1 rounded text-xs font-medium ${
+                          tag === 'h1' ? 'bg-blue-100 text-blue-700' :
+                          tag === 'h2' ? 'bg-green-100 text-green-700' :
+                          tag === 'h3' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {(tag as string).toUpperCase()}: {count as number}
+                        </span>
+                      ))}
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {Object.entries(aeoResult.headingStructure.counts || {})
-                    .filter(([, count]) => (count as number) > 0)
-                    .map(([tag, count]) => `${(tag as string).toUpperCase()}: ${count as number}`)
-                    .join(', ')}
-                </div>
+
+                {/* H1 specific analysis */}
+                {aeoResult.headingStructure.counts && (
+                  <div className="border-t border-border/30 pt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">H1 analysis:</span>
+                      <span className={`text-xs font-medium ${
+                        (aeoResult.headingStructure.counts.h1 || 0) === 1 ? 'text-green-600' :
+                        (aeoResult.headingStructure.counts.h1 || 0) === 0 ? 'text-red-600' :
+                        (aeoResult.headingStructure.counts.h1 || 0) <= 3 ? 'text-yellow-600' :
+                        'text-orange-600'
+                      }`}>
+                        {(aeoResult.headingStructure.counts.h1 || 0) === 0 ? 'Missing primary heading' :
+                         (aeoResult.headingStructure.counts.h1 || 0) === 1 ? 'Perfect single H1' :
+                         (aeoResult.headingStructure.counts.h1 || 0) <= 3 ? `${aeoResult.headingStructure.counts.h1} H1s (sectioned content)` :
+                         `${aeoResult.headingStructure.counts.h1} H1s (consider reducing)`}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Enhanced hierarchy analysis details */}
+                {aeoResult.headingStructure.detailsAnalysis && (
+                  <div className="border-t border-border/30 pt-3 space-y-2">
+                    <div className="text-xs font-medium text-foreground mb-2">Detailed Hierarchy Analysis</div>
+                    
+                    {/* Analysis score */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Structure score:</span>
+                      <span className={`text-xs font-bold ${
+                        (aeoResult.headingStructure.analysisScore || 0) >= 80 ? 'text-green-600' :
+                        (aeoResult.headingStructure.analysisScore || 0) >= 60 ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        {aeoResult.headingStructure.analysisScore || 0}/100
+                      </span>
+                    </div>
+
+                    {/* Issues */}
+                    {(aeoResult.headingStructure.analysisIssues?.length || 0) > 0 && (
+                      <div className="bg-red-50 border border-red-200 rounded p-2">
+                        <div className="text-xs font-medium text-red-700 mb-1">Issues Found:</div>
+                        <ul className="text-xs text-red-600 space-y-1">
+                          {(aeoResult.headingStructure.analysisIssues || []).slice(0, 3).map((issue, index) => (
+                            <li key={index} className="flex items-start gap-1">
+                              <span className="text-red-400 mt-0.5">•</span>
+                              <span>{issue}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {(aeoResult.headingStructure.analysisIssues?.length || 0) > 3 && (
+                          <div className="text-xs text-red-500 mt-1">
+                            +{(aeoResult.headingStructure.analysisIssues?.length || 0) - 3} more issues
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Strengths */}
+                    {(aeoResult.headingStructure.analysisStrengths?.length || 0) > 0 && (
+                      <div className="bg-green-50 border border-green-200 rounded p-2">
+                        <div className="text-xs font-medium text-green-700 mb-1">Strengths:</div>
+                        <ul className="text-xs text-green-600 space-y-1">
+                          {(aeoResult.headingStructure.analysisStrengths || []).slice(0, 3).map((strength, index) => (
+                            <li key={index} className="flex items-start gap-1">
+                              <span className="text-green-400 mt-0.5">✓</span>
+                              <span>{strength}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Detailed metrics */}
+                    {aeoResult.headingStructure.detailsAnalysis && (
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Questions:</span>
+                          <span className="font-medium">{aeoResult.headingStructure.detailsAnalysis.questionCount}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Avg length:</span>
+                          <span className="font-medium">{aeoResult.headingStructure.detailsAnalysis.averageLength} chars</span>
+                        </div>
+                        {aeoResult.headingStructure.detailsAnalysis.emptyHeadings > 0 && (
+                          <div className="flex justify-between text-red-600">
+                            <span>Empty headings:</span>
+                            <span className="font-medium">{aeoResult.headingStructure.detailsAnalysis.emptyHeadings}</span>
+                          </div>
+                        )}
+                        {aeoResult.headingStructure.detailsAnalysis.duplicateHeadings.length > 0 && (
+                          <div className="flex justify-between text-orange-600">
+                            <span>Duplicates:</span>
+                            <span className="font-medium">{aeoResult.headingStructure.detailsAnalysis.duplicateHeadings.length}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ) : (
             <div className="bg-muted/30 p-4 rounded-lg opacity-60">
               <div className="flex items-center gap-2 mb-2">
-                <h4 className="font-medium text-foreground">Content Structure</h4>
+                <h4 className="font-medium text-foreground">Heading Hierarchy</h4>
                 <ScopeBadge scope="multilingual-safe" />
               </div>
-              <div className="text-sm text-muted-foreground">Structure not detected</div>
+              <div className="text-sm text-muted-foreground">No heading structure detected</div>
             </div>
           )}
         </div>
@@ -126,6 +247,7 @@ export function AEOAnalysis({ aeoResult }: AEOAnalysisProps) {
             <div className="bg-muted/30 p-4 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <h4 className="font-medium text-foreground">List Structure</h4>
+                <span className="text-xs text-muted-foreground ml-1">(&lt;ul&gt;, &lt;ol&gt;, &lt;li&gt; elements)</span>
                 <ScopeBadge scope={getScope(aeoResult.listStructure.scope)} />
               </div>
               <div className="space-y-1 text-sm">
@@ -145,6 +267,7 @@ export function AEOAnalysis({ aeoResult }: AEOAnalysisProps) {
             <div className="bg-muted/30 p-4 rounded-lg opacity-60">
               <div className="flex items-center gap-2 mb-2">
                 <h4 className="font-medium text-foreground">List Structure</h4>
+                <span className="text-xs text-muted-foreground ml-1">(&lt;ul&gt;, &lt;ol&gt;, &lt;li&gt; elements)</span>
                 <ScopeBadge scope="multilingual-safe" />
               </div>
               <div className="text-sm text-muted-foreground">List structure not detected</div>
@@ -181,18 +304,18 @@ export function AEOAnalysis({ aeoResult }: AEOAnalysisProps) {
                 <ScopeBadge scope="english-only" />
               </div>
               <div className="text-sm text-muted-foreground">
-                Analysis not available for {aeoResult.language.toUpperCase()} content
+                Analysis not available for {languageDisplay} content
               </div>
             </div>
           )}
         </div>
 
         {/* Recommendations */}
-        {aeoResult.recommendations.length > 0 && (
+        {(aeoResult.recommendations?.length ?? 0) > 0 && (
           <div className="bg-muted/30 p-4 rounded-lg">
             <h4 className="font-medium text-foreground mb-3">AEO Recommendations</h4>
             <div className="space-y-2">
-              {aeoResult.recommendations.map((rec, index) => (
+              {(aeoResult.recommendations || []).map((rec, index) => (
                 <div key={index} className="flex items-start gap-3 p-2 bg-background rounded border-l-4 border-l-blue-400">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <div className={`w-2 h-2 rounded-full flex-shrink-0 ${

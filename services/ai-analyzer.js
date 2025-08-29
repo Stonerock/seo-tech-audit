@@ -1083,7 +1083,7 @@ class AIContentAnalyzer {
   }
 
   /**
-   * Analyze heading structure for AI readability
+   * Analyze heading structure for AI readability with detailed hierarchy analysis
    */
   analyzeHeadingStructure(headings) {
     const analysis = {
@@ -1092,47 +1092,139 @@ class AIContentAnalyzer {
       strengths: [],
       details: {
         hasH1: false,
+        h1Count: 0,
         hierarchyValid: true,
+        hierarchyIssues: [],
         questionCount: 0,
-        averageLength: 0
+        averageLength: 0,
+        levelDistribution: { h1: 0, h2: 0, h3: 0, h4: 0, h5: 0, h6: 0 },
+        nestingDepth: 0,
+        orphanedHeadings: [],
+        skippedLevels: [],
+        emptyHeadings: 0,
+        duplicateHeadings: []
       }
     };
 
     if (headings.length === 0) {
-      analysis.issues.push('No headings found');
+      analysis.issues.push('No headings found - add structured headings for better AI parsing');
       return analysis;
     }
 
-    // Check for H1
-    const h1Count = headings.filter(h => h.level === 1).length;
-    analysis.details.hasH1 = h1Count > 0;
-    
-    if (h1Count > 0) {
-      analysis.score += 30;
-      analysis.strengths.push(`H1 heading${h1Count > 1 ? 's' : ''} found`);
-    } else {
-      analysis.issues.push('Missing H1 tag - consider adding a main heading');
-    }
-    // Note: Multiple H1s are acceptable in HTML5
+    // Count headings by level and detect distribution issues
+    headings.forEach(h => {
+      analysis.details.levelDistribution[`h${h.level}`]++;
+    });
 
-    // Check hierarchy
-    for (let i = 1; i < headings.length; i++) {
-      const current = headings[i];
-      const previous = headings[i - 1];
+    // H1 Analysis (multiple H1s are acceptable but should be strategic)
+    analysis.details.h1Count = analysis.details.levelDistribution.h1;
+    analysis.details.hasH1 = analysis.details.h1Count > 0;
+    
+    if (analysis.details.h1Count === 0) {
+      analysis.issues.push('Missing H1 tag - add primary heading for content hierarchy');
+      analysis.score -= 15;
+    } else if (analysis.details.h1Count === 1) {
+      analysis.score += 20;
+      analysis.strengths.push('Single H1 provides clear document structure');
+    } else if (analysis.details.h1Count <= 3) {
+      analysis.score += 15;
+      analysis.strengths.push(`${analysis.details.h1Count} H1s - acceptable for sectioned content`);
+    } else {
+      analysis.issues.push(`${analysis.details.h1Count} H1 tags - consider reducing for cleaner hierarchy`);
+      analysis.score -= 5;
+    }
+
+    // Detailed hierarchy validation with specific issue detection
+    let currentMaxLevel = 0;
+    const hierarchyPath = [];
+    analysis.details.nestingDepth = Math.max(...headings.map(h => h.level));
+    
+    for (let i = 0; i < headings.length; i++) {
+      const heading = headings[i];
+      const level = heading.level;
       
-      if (current.level > previous.level + 1) {
+      // Check for empty headings
+      if (!heading.text || heading.text.trim().length === 0) {
+        analysis.details.emptyHeadings++;
+        continue;
+      }
+      
+      // Check for level skipping
+      if (level > currentMaxLevel + 1 && currentMaxLevel > 0) {
+        const skipped = `H${currentMaxLevel + 1} to H${level}`;
+        if (!analysis.details.skippedLevels.includes(skipped)) {
+          analysis.details.skippedLevels.push(skipped);
+          analysis.details.hierarchyIssues.push(`Skipped heading level: ${skipped} at "${heading.text.substring(0, 40)}..."`);
+        }
         analysis.details.hierarchyValid = false;
-        analysis.issues.push('Heading hierarchy skips levels');
-        break;
+      }
+      
+      // Update hierarchy tracking
+      currentMaxLevel = Math.max(currentMaxLevel, level);
+      hierarchyPath.push({ level, text: heading.text, index: i });
+      
+      // Check for orphaned deep headings (H4+ without proper parent structure)
+      if (level >= 4) {
+        const hasProperParent = hierarchyPath.slice(0, -1).some(h => h.level === level - 1);
+        if (!hasProperParent) {
+          analysis.details.orphanedHeadings.push({
+            heading: heading.text.substring(0, 40),
+            level: `H${level}`,
+            position: i + 1
+          });
+        }
       }
     }
 
-    if (analysis.details.hierarchyValid) {
-      analysis.score += 25;
-      analysis.strengths.push('Valid heading hierarchy');
+    // Check for duplicate headings (can confuse AI systems)
+    const headingTexts = headings.map(h => h.text.toLowerCase().trim());
+    const duplicates = headingTexts.filter((text, index) => 
+      text.length > 0 && headingTexts.indexOf(text) !== index
+    );
+    analysis.details.duplicateHeadings = [...new Set(duplicates)];
+
+    // Empty headings penalty
+    if (analysis.details.emptyHeadings > 0) {
+      analysis.issues.push(`${analysis.details.emptyHeadings} empty heading(s) found`);
+      analysis.score -= analysis.details.emptyHeadings * 5;
     }
 
-    // Check for question-based headings
+    // Hierarchy scoring
+    if (analysis.details.hierarchyValid && analysis.details.skippedLevels.length === 0) {
+      analysis.score += 25;
+      analysis.strengths.push('Perfect heading hierarchy structure');
+    } else if (analysis.details.skippedLevels.length <= 2) {
+      analysis.score += 15;
+      analysis.issues.push(`Minor hierarchy issues: ${analysis.details.skippedLevels.join(', ')}`);
+    } else {
+      analysis.score += 5;
+      analysis.issues.push(`Multiple hierarchy violations (${analysis.details.skippedLevels.length})`);
+    }
+
+    // Orphaned headings penalty
+    if (analysis.details.orphanedHeadings.length > 0) {
+      analysis.issues.push(`${analysis.details.orphanedHeadings.length} orphaned deep heading(s) - ensure proper nesting`);
+      analysis.score -= analysis.details.orphanedHeadings.length * 3;
+    }
+
+    // Duplicate headings penalty
+    if (analysis.details.duplicateHeadings.length > 0) {
+      analysis.issues.push(`${analysis.details.duplicateHeadings.length} duplicate heading(s) - may confuse AI systems`);
+      analysis.score -= analysis.details.duplicateHeadings.length * 2;
+    }
+
+    // Nesting depth analysis
+    if (analysis.details.nestingDepth <= 3) {
+      analysis.score += 10;
+      analysis.strengths.push('Appropriate heading depth (≤3 levels)');
+    } else if (analysis.details.nestingDepth <= 4) {
+      analysis.score += 5;
+      analysis.strengths.push('Manageable heading depth (4 levels)');
+    } else {
+      analysis.issues.push(`Deep nesting (${analysis.details.nestingDepth} levels) - consider flattening structure`);
+    }
+
+    // Check for question-based headings (enhanced)
     const questionHeadings = headings.filter(h => 
       this.semanticPatterns.questionIndicators.some(pattern => 
         pattern.test(h.text)
@@ -1142,19 +1234,59 @@ class AIContentAnalyzer {
     analysis.details.questionCount = questionHeadings.length;
     if (questionHeadings.length > 0) {
       analysis.score += 20;
-      analysis.strengths.push(`${questionHeadings.length} question-based headings`);
+      analysis.strengths.push(`${questionHeadings.length} question-based headings for AI Overviews`);
+    } else if (headings.length > 3) {
+      analysis.issues.push('Consider adding question-based headings for better AI Overview optimization');
     }
 
-    // Check heading length (optimal: 20-70 characters)
-    const lengths = headings.map(h => h.text.length);
-    analysis.details.averageLength = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+    // Check heading length distribution (enhanced)
+    const lengths = headings.map(h => h.text.length).filter(len => len > 0);
+    if (lengths.length > 0) {
+      analysis.details.averageLength = Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length);
+      
+      const tooShort = lengths.filter(len => len < 10).length;
+      const tooLong = lengths.filter(len => len > 100).length;
+      const optimal = lengths.filter(len => len >= 20 && len <= 70).length;
+      
+      if (optimal / lengths.length > 0.8) {
+        analysis.score += 15;
+        analysis.strengths.push('Optimal heading lengths for AI processing');
+      } else {
+        if (tooShort > 0) analysis.issues.push(`${tooShort} headings too short (<10 chars)`);
+        if (tooLong > 0) analysis.issues.push(`${tooLong} headings too long (>100 chars)`);
+      }
+    }
+
+    // Content distribution analysis
+    const totalLevels = Object.values(analysis.details.levelDistribution).filter(count => count > 0).length;
+    if (totalLevels >= 3) {
+      analysis.score += 10;
+      analysis.strengths.push(`Good level variety (${totalLevels} different heading levels)`);
+    }
+
+    // Check for semantic heading patterns
+    const semanticPatterns = [
+      /\b(introduction|overview|summary|conclusion)\b/gi,
+      /\b(benefits|advantages|features|steps|process)\b/gi,
+      /\b(examples|case studies|comparison|analysis)\b/gi
+    ];
     
-    const optimalLengths = lengths.filter(len => len >= 20 && len <= 70);
-    if (optimalLengths.length / lengths.length > 0.7) {
-      analysis.score += 25;
-      analysis.strengths.push('Good heading length distribution');
-    } else {
-      analysis.issues.push('Headings too short or too long for AI optimization');
+    const semanticHeadings = headings.filter(h =>
+      semanticPatterns.some(pattern => pattern.test(h.text))
+    ).length;
+
+    if (semanticHeadings > 0) {
+      analysis.score += 10;
+      analysis.strengths.push('Contains semantic heading patterns');
+    }
+
+    // Final score clamping and bonus for comprehensive structure
+    analysis.score = Math.max(0, Math.min(100, analysis.score));
+    
+    // Bonus for comprehensive, well-structured content
+    if (analysis.score > 75 && headings.length >= 5 && analysis.details.nestingDepth >= 2) {
+      analysis.score += 5;
+      analysis.strengths.push('Comprehensive content structure ideal for AI systems');
     }
 
     return analysis;

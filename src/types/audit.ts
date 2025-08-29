@@ -12,7 +12,10 @@ export interface AuditResult {
     metadata?: MetadataResult;
     schema?: SchemaResult;
     aeo?: AEOResult;
+    eat?: EATResult;
+    lighthouse?: LighthouseResult;
   };
+  psiMetrics?: PSIResult;
   overallScore?: number;
 }
 
@@ -26,6 +29,35 @@ export interface SEOResult {
   externalLinks: number;
   hasSchema?: boolean;
   issues?: string[];
+  // New JavaScript analysis properties
+  jsAnalysis?: {
+    needsJS: boolean;
+    confidence: 'high' | 'medium' | 'low';
+    score: number;
+    indicators: {
+      hasReact: boolean;
+      hasVue: boolean;
+      hasAngular: boolean;
+      hasNext: boolean;
+      hasNuxt: boolean;
+      hasSPARoot: boolean;
+      hasMinimalContent: boolean;
+      hasExternalScripts: boolean;
+      hasInlineScripts: boolean;
+      hasModuleScripts: boolean;
+      hasLoadingStates: boolean;
+      hasAsyncAttributes: boolean;
+      hasPlaceholders: boolean;
+      hasJSRequiredMeta: boolean;
+      hasPreloadJS: boolean;
+    };
+    recommendation: string;
+  };
+  scoreBreakdown?: Array<{
+    factor: string;
+    points: number;
+    earned: number;
+  }>;
 }
 
 export interface PerformanceResult {
@@ -128,11 +160,20 @@ export interface SchemaResult {
   missingFields?: Record<string, number>;
   aiReadinessScore?: number;
   fieldCoveragePercent?: number;
+  contentValidation?: {
+    issues: string[];
+    warnings: string[];
+    score: number;
+    validItems: number;
+    totalChecks: number;
+    matchPercentage: number;
+  };
 }
 
 // Options for audit requests
 export interface AuditOptions {
   includeLighthouse?: boolean;
+  includePSI?: boolean;
   timeout?: number;
   includeScreenshot?: boolean;
   fastMode?: boolean;
@@ -194,6 +235,34 @@ export interface AEOResult {
       h6: number;
     };
     scope: 'multilingual-safe';
+    // Enhanced hierarchy analysis
+    detailsAnalysis?: {
+      h1Count: number;
+      hierarchyValid: boolean;
+      hierarchyIssues: string[];
+      nestingDepth: number;
+      orphanedHeadings: Array<{
+        heading: string;
+        level: string;
+        position: number;
+      }>;
+      skippedLevels: string[];
+      emptyHeadings: number;
+      duplicateHeadings: string[];
+      questionCount: number;
+      averageLength: number;
+      levelDistribution: {
+        h1: number;
+        h2: number;
+        h3: number;
+        h4: number;
+        h5: number;
+        h6: number;
+      };
+    };
+    analysisScore?: number;
+    analysisIssues?: string[];
+    analysisStrengths?: string[];
   };
   listStructure: {
     unordered: number;
@@ -217,4 +286,145 @@ export interface AEOResult {
     description: string;
     scope: 'multilingual-safe' | 'english-only';
   }>;
+}
+
+// Lighthouse result interface for performance analysis
+export interface LighthouseResult {
+  categories?: {
+    performance?: {
+      score: number;
+      title: string;
+    };
+    accessibility?: {
+      score: number;
+      title: string;
+    };
+    'best-practices'?: {
+      score: number;
+      title: string;
+    };
+    seo?: {
+      score: number;
+      title: string;
+    };
+  };
+  audits?: {
+    [key: string]: {
+      id: string;
+      title: string;
+      description: string;
+      score: number | null;
+      numericValue?: number;
+      displayValue?: string;
+    };
+  };
+  lighthouseVersion?: string;
+  fetchTime?: string;
+  finalUrl?: string;
+}
+
+// E-A-T (Expertise, Authoritativeness, Trustworthiness) result interface
+export interface EATResult {
+  overallScore: number;
+  executionTime: number;
+  expertise: {
+    score: number;
+    signals: string[];
+    authors: Array<{
+      name: string;
+      source: 'schema' | 'meta' | 'byline';
+      confidence: number;
+      type: string;
+      url?: string | null;
+    }>;
+    credentials: Array<{
+      author: string;
+      credentials: string[];
+      score: number;
+      bio: string | null;
+    }>;
+    topicExpertise: number;
+  };
+  authoritativeness: {
+    score: number;
+    signals: string[];
+    citations: Array<{
+      text: string;
+      type: 'numbered' | 'academic' | 'url' | 'section';
+      confidence: number;
+    }>;
+    externalReferences: number;
+    authorLinks: number;
+    institutionalAffiliation: boolean;
+  };
+  trustworthiness: {
+    score: number;
+    signals: string[];
+    hasContactInfo: boolean;
+    hasPrivacyPolicy: boolean;
+    hasAboutPage: boolean;
+    hasSecureConnection: boolean;
+    transparencyScore: number;
+  };
+  recommendations: Array<{
+    priority: 'high' | 'medium' | 'low';
+    category: 'expertise' | 'authority' | 'trust';
+    title: string;
+    description: string;
+  }>;
+}
+
+// PageSpeed Insights result interface
+export interface PSIResult {
+  url: string;
+  timestamp: string;
+  cached: boolean;
+  performance: {
+    score: number;
+    metrics: {
+      fcp: string;
+      lcp: string;
+      fid: string;
+      cls: string;
+      speedIndex: string;
+      tbt: string;
+    };
+    coreWebVitals: {
+      fcp: 'good' | 'needs-improvement' | 'poor';
+      lcp: 'good' | 'needs-improvement' | 'poor';
+      cls: 'good' | 'needs-improvement' | 'poor';
+      fid: 'good' | 'needs-improvement' | 'poor';
+    };
+  };
+  seo?: {
+    score: number;
+    audits: Array<{
+      id: string;
+      title: string;
+      description: string;
+      score: number;
+      passed: boolean;
+    }>;
+  };
+  accessibility?: {
+    score: number;
+    audits: Array<{
+      id: string;
+      title: string;
+      description: string;
+      score: number;
+      passed: boolean;
+    }>;
+  };
+  opportunities: Array<{
+    title: string;
+    description: string;
+    impact: number;
+    score: number;
+  }>;
+  environment: {
+    userAgent?: string;
+    networkThrottling?: number;
+    emulatedDevice?: string;
+  };
 }
