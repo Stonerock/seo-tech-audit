@@ -8,6 +8,8 @@ import { AEOAnalysis } from '@/components/audit/AEOAnalysis';
 import { AIAnalysisSection } from '@/components/audit/AIAnalysisSection';
 import { BatchAuditSection } from '@/components/audit/BatchAuditSection';
 import { BusinessValueSection } from '@/components/audit/BusinessValueSection';
+import { PSIPerformanceSection } from '@/components/audit/PSIPerformanceSection';
+import { EATAnalysisSection } from '@/components/audit/EATAnalysisSection';
 import { ServerStatus } from '@/components/ServerStatus';
 import { auditService } from '@/services/auditService';
 import { isValidURL } from '@/lib/utils';
@@ -18,8 +20,6 @@ export function AuditDashboard() {
   const [results, setResults] = useState<AuditResult | null>(null);
   const [loadingState, setLoadingState] = useState<LoadingState>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [includeLighthouse, setIncludeLighthouse] = useState(false);
-  const [fastMode, setFastMode] = useState(true);
   const [activeTab, setActiveTab] = useState<'single' | 'batch'>('single');
 
   // URL validation
@@ -52,8 +52,7 @@ export function AuditDashboard() {
 
     try {
       const auditResults = await auditService.performAudit(url, { 
-        includeLighthouse,
-        fastMode
+        includePSI: true // Always include PageSpeed Insights for Core Web Vitals
       });
       
       setResults(auditResults);
@@ -111,8 +110,9 @@ export function AuditDashboard() {
             A no-fuss audit tool — designed for the era of AI-powered search optimization.
           </p>
           <p className="text-sm text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Because while "attention is all you need" revolutionized AI, you still need structured data, 
-            semantic HTML, and the ability to explain why bounce rate isn't a ranking factor.
+            Because while "attention is all you need" revolutionized AI, in search you still need structured data, 
+            semantic HTML, and the ability to explain why bounce rate isn't a ranking factor. And if you're 
+            curious about the future, experiments like llms.txt may one day help AI make better sense of your site.
           </p>
         </div>
 
@@ -203,32 +203,6 @@ export function AuditDashboard() {
 
                 {/* Options & Secondary Actions */}
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between pt-4 border-t border-border/50">
-                  {/* Performance Options */}
-                  <div className="flex flex-col gap-3">
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={fastMode}
-                        onChange={(e) => setFastMode(e.target.checked)}
-                        className="rounded border-border text-primary focus:ring-primary"
-                      />
-                      <span className="text-muted-foreground">
-                        Fast mode (⚡ 2-3 seconds, skips heavy diagnostics)
-                      </span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={includeLighthouse}
-                        onChange={(e) => setIncludeLighthouse(e.target.checked)}
-                        disabled={fastMode}
-                        className="rounded border-border text-primary focus:ring-primary disabled:opacity-50"
-                      />
-                      <span className={`text-muted-foreground ${fastMode ? 'opacity-50' : ''}`}>
-                        Include Lighthouse performance metrics (🐌 slower, more comprehensive)
-                      </span>
-                    </label>
-                  </div>
 
                   {/* Secondary Actions */}
                   <div className="flex gap-2">
@@ -273,18 +247,41 @@ export function AuditDashboard() {
         {/* Single Page Results */}
         {activeTab === 'single' && (
           <>
-            {/* Error Display */}
+            {/* Enhanced Error Display */}
             {error && (
               <Card className="mb-8 border-destructive/20 bg-destructive/5">
                 <CardContent className="pt-6">
-                  <div className="flex items-center gap-2 text-destructive">
-                    <AlertCircle className="w-5 h-5" />
-                    <div>
-                      <h3 className="font-semibold">Analysis Failed</h3>
-                      <p className="text-sm mt-1">{error}</p>
-                      <p className="text-xs mt-2 text-muted-foreground">
-                        Please verify the URL is accessible and try again.
-                      </p>
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-destructive mt-1" />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-destructive">Analysis Failed</h3>
+                      <p className="text-sm mt-1 text-foreground">{error}</p>
+                      
+                      <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                        <h4 className="text-sm font-medium text-amber-800 mb-2">💡 Troubleshooting Tips</h4>
+                        <ul className="text-xs text-amber-700 space-y-1">
+                          <li>• <strong>Dynamic/SPA sites</strong>: Our tool analyzes static HTML. JavaScript-heavy sites may show limited results.</li>
+                          <li>• <strong>Timeout issues</strong>: Large or slow sites may exceed analysis limits. The tool will retry automatically with longer timeouts.</li>
+                          <li>• <strong>Access blocked</strong>: Check if robots.txt or firewalls block our crawler.</li>
+                          <li>• <strong>Private sites</strong>: Sites requiring authentication cannot be analyzed.</li>
+                          <li>• <strong>Heavy JavaScript</strong>: Sites that depend heavily on JavaScript rendering may need specialized analysis.</li>
+                        </ul>
+                        
+                        <div className="mt-3 pt-3 border-t border-amber-200">
+                          <p className="text-xs text-amber-700">
+                            <strong>Alternative:</strong> For JavaScript-heavy sites, consider running this analysis on 
+                            static snapshots or server-side rendered versions.
+                          </p>
+                          {error.includes('JavaScript-heavy') && (
+                            <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                              <p className="text-xs text-blue-700">
+                                <strong>🤖 Dynamic Site Detected:</strong> This site may require JavaScript to display full content. 
+                                Our analysis focuses on static HTML and may miss dynamically loaded elements.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -315,6 +312,80 @@ export function AuditDashboard() {
             {/* Results Display */}
             {results && loadingState === 'success' && (
               <div className="space-y-8">
+                {/* Target URL Header */}
+                <Card className="border-primary/20 bg-primary/5">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <Globe className="w-5 h-5 text-primary" />
+                          <span className="text-sm font-medium text-foreground">Analysis Target</span>
+                        </div>
+                        <div className="font-mono text-lg text-primary font-medium break-all mb-3">
+                          {results.url}
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                          <span>Analyzed: {new Date(results.timestamp).toLocaleString()}</span>
+                          <span>Mode: {results.mode}</span>
+                          <span>Duration: {results.executionTime}ms</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2 ml-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const exportData = {
+                              ...results,
+                              exportedAt: new Date().toISOString(),
+                              generatedBy: 'AttentionIsAllYouNeed SEO Audit Tool'
+                            };
+                            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = `seo-audit-${new URL(results.url).hostname}-${new Date().toISOString().split('T')[0]}.json`;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            URL.revokeObjectURL(url);
+                          }}
+                          className="text-xs"
+                        >
+                          📥 Export JSON
+                        </Button>
+                        
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async (event) => {
+                            try {
+                              const shareData = `SEO Audit Report for ${results.url}
+                              
+AI Readiness: ${Math.round((results.tests.schema?.score || 0) * 0.4 + (results.tests.seo?.score || 0) * 0.3 + (results.tests.files ? 20 : 0) + (results.tests.accessibility?.score || 0) * 0.1)}%
+Generated: ${new Date(results.timestamp).toLocaleDateString()}
+Analysis Tool: AttentionIsAllYouNeed.app`;
+                              
+                              await navigator.clipboard.writeText(shareData);
+                              // Show success feedback briefly
+                              const btn = event.currentTarget as HTMLButtonElement;
+                              const originalText = btn.textContent;
+                              btn.textContent = '✅ Copied!';
+                              setTimeout(() => btn.textContent = originalText, 2000);
+                            } catch (err) {
+                              console.warn('Copy failed:', err);
+                            }
+                          }}
+                          className="text-xs"
+                        >
+                          📋 Share Summary
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 {/* Analysis Metadata */}
                 <div className="paper-meta flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm">
@@ -329,6 +400,14 @@ export function AuditDashboard() {
                 {/* Core Metrics */}
                 <AttentionCards results={results} />
                 
+                {/* PSI Performance Section */}
+                {results.psiMetrics && (
+                  <div className="border-t border-border pt-8">
+                    <h2 className="academic-section-title">PageSpeed Insights Performance</h2>
+                    <PSIPerformanceSection psiData={results.psiMetrics} />
+                  </div>
+                )}
+                
                 {/* AEO Analysis Section */}
                 {results.tests.aeo && (
                   <div className="border-t border-border pt-8">
@@ -342,6 +421,14 @@ export function AuditDashboard() {
                   <h2 className="academic-section-title">AI Optimization Analysis</h2>
                   <AIAnalysisSection results={results} />
                 </div>
+
+                {/* E-A-T Analysis Section */}
+                {results.tests.eat && (
+                  <div className="border-t border-border pt-8">
+                    <h2 className="academic-section-title">Content Authority & Credibility (E-A-T)</h2>
+                    <EATAnalysisSection eatResult={results.tests.eat} />
+                  </div>
+                )}
 
                 {/* Business Value Section */}
                 <div className="border-t border-border pt-8">

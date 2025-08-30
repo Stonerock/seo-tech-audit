@@ -114,6 +114,15 @@ export interface FilesResult {
   sitemap: {
     exists: boolean;
     url: string;
+    enhanced?: {
+      type: string | null;
+      urlCount: number;
+      hasLastmod: boolean;
+      isValidXML: boolean;
+      httpsConsistent: boolean;
+      errors: string[];
+      score: number;
+    };
   };
   rss?: {
     exists: boolean;
@@ -129,6 +138,14 @@ export interface MetadataResult {
   title: string;
   description: string;
   canonical: string;
+  canonicalAnalysis?: {
+    url: string;
+    present: boolean;
+    count: number;
+    isValid: boolean;
+    isSelfReferencing: boolean;
+    issues: string[];
+  };
   viewport: string;
   robots: string;
   issues: string[];
@@ -177,6 +194,7 @@ export interface AuditOptions {
   timeout?: number;
   includeScreenshot?: boolean;
   fastMode?: boolean;
+  fullAnalysis?: boolean; // Enables browserless.io rendering
 }
 
 // Status types for UI components

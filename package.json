@@ -2,7 +2,6 @@
   "name": "seo-audit-tool-optimized",
   "version": "2.1.0",
   "description": "Academic-grade SEO audit tool with modern UX",
-  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -52,7 +51,9 @@
     "uuid": "^11.1.0",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "xml2js": "^0.6.2"
+    "xml2js": "^0.6.2",
+    "@google-cloud/firestore": "^7.10.0",
+    "@google-cloud/pubsub": "^4.7.3"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

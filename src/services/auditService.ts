@@ -36,6 +36,11 @@ export class AuditService {
     }
 
     try {
+      // Add timeout based on mode - improved timeouts for dynamic sites
+      const controller = new AbortController();
+      const timeoutMs = options.fastMode ? 35000 : 60000; // 35s for fast mode, 60s for full audit (aligned with backend)
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      
       // Use POST request as expected by the deployed backend
       const response = await fetch(`${this.baseURL}/api/audit`, {
         method: 'POST',
@@ -47,9 +52,13 @@ export class AuditService {
           options: {
             ...options,
             skipLighthouse: options.fastMode, // Map fastMode to skipLighthouse
+            enableJS: options.fullAnalysis, // Map fullAnalysis to enableJS (browserless.io)
           }
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -68,6 +77,11 @@ export class AuditService {
     } catch (error) {
       if (error instanceof APIError) {
         throw error;
+      }
+      
+      if (error instanceof Error && error.name === 'AbortError') {
+        const timeoutSeconds = options.fastMode ? 35 : 60;
+        throw new APIError(`Audit timed out after ${timeoutSeconds} seconds. The site may be JavaScript-heavy or slow to respond. Try a different page or check if the site blocks crawlers.`, 408);
       }
       
       // Handle network errors
@@ -120,13 +134,20 @@ export class AuditService {
     nextStep: string;
   }> {
     try {
+      // Add timeout controller for sitemap discovery
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const response = await fetch(`${this.baseURL}/api/sitemap-audit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ url, maxUrls, mode: 'discover' }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -140,6 +161,9 @@ export class AuditService {
     } catch (error) {
       if (error instanceof APIError) {
         throw error;
+      }
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new APIError('Sitemap discovery timed out (30 seconds). The site may have a large or complex sitemap.', 408);
       }
       throw new APIError('Failed to discover sitemap URLs', 0);
     }
@@ -177,13 +201,21 @@ export class AuditService {
     executionTime: number;
   }> {
     try {
+      // Add longer timeout for batch processing (multiple URLs)
+      const controller = new AbortController();
+      const timeoutMs = Math.max(60000, maxUrls * 3000); // At least 60s, or 3s per URL
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      
       const response = await fetch(`${this.baseURL}/api/sitemap-audit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ url, maxUrls, mode: 'batch' }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -197,6 +229,10 @@ export class AuditService {
     } catch (error) {
       if (error instanceof APIError) {
         throw error;
+      }
+      if (error instanceof Error && error.name === 'AbortError') {
+        const timeoutSeconds = Math.max(60, maxUrls * 3);
+        throw new APIError(`Batch audit timed out after ${timeoutSeconds} seconds. Try reducing the number of URLs or the site may have complex pages that take longer to analyze.`, 408);
       }
       throw new APIError('Failed to perform batch audit', 0);
     }
