@@ -23,7 +23,7 @@ export function BusinessValueSection({ results }: BusinessValueSectionProps) {
       issues.push({
         type: 'critical',
         area: 'AI Visibility',
-        issue: 'Your website is invisible to AI search engines like ChatGPT, Claude, and Google AI Overviews',
+        issue: 'Limited structured data may reduce AI search engine visibility',
         impact: 'Missing out on AI-driven traffic and customer discovery',
         solution: 'Add structured data to help AI understand your business',
         effort: 'Medium'
@@ -279,7 +279,7 @@ export function BusinessValueSection({ results }: BusinessValueSectionProps) {
                 "Your website has good AI compatibility, but improvements could increase your visibility in AI search results." :
                 overallScore >= 40 ?
                 "Your website needs significant improvements to be discovered by AI search engines and tools." :
-                "Your website is largely invisible to AI search engines. You're missing potential customers who use AI tools to find businesses."
+                "Your website may have limited visibility in AI search results due to minimal structured data coverage."
               }
             </p>
           </div>

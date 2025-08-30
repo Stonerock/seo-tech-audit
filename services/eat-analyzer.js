@@ -35,12 +35,16 @@ class EATAnalyzer {
     async analyzeEAT($, url, schemaData = []) {
         const startTime = Date.now();
         
+        // Detect page type to adjust E-A-T criteria appropriately
+        const pageType = this.detectPageType($, url);
+        
         const analysis = {
-            expertise: await this.analyzeExpertise($, schemaData),
-            authoritativeness: await this.analyzeAuthoritativeness($, url, schemaData),
+            expertise: await this.analyzeExpertise($, schemaData, pageType),
+            authoritativeness: await this.analyzeAuthoritativeness($, url, schemaData, pageType),
             trustworthiness: await this.analyzeTrustworthiness($, url),
             overallScore: 0,
             recommendations: [],
+            pageType: pageType,
             executionTime: 0
         };
         
@@ -57,7 +61,7 @@ class EATAnalyzer {
     /**
      * Analyze expertise signals on the page
      */
-    async analyzeExpertise($, schemaData) {
+    async analyzeExpertise($, schemaData, pageType) {
         const expertise = {
             score: 0,
             signals: [],
@@ -66,9 +70,14 @@ class EATAnalyzer {
             topicExpertise: 0
         };
 
-        // Author detection from multiple sources
+        // Author detection from multiple sources - adjust expectations based on page type
         const authors = this.detectAuthors($, schemaData);
         expertise.authors = authors;
+        
+        // For homepages and service pages, don't penalize for lack of individual authors
+        if (!pageType.expectsAuthors && authors.length === 0) {
+            expertise.signals.push(`No individual authors expected for ${pageType.type} - using organizational expertise`);
+        }
 
         // Credential analysis
         const pageText = $('body').text().toLowerCase();
@@ -97,7 +106,7 @@ class EATAnalyzer {
     /**
      * Analyze authoritativeness signals
      */
-    async analyzeAuthoritativeness($, url, schemaData) {
+    async analyzeAuthoritativeness($, url, schemaData, pageType) {
         const authority = {
             score: 0,
             signals: [],
@@ -107,10 +116,15 @@ class EATAnalyzer {
             institutionalAffiliation: false
         };
 
-        // Citation and reference analysis
+        // Citation and reference analysis - adjust expectations based on page type
         const citations = this.detectCitations($);
         authority.citations = citations;
         authority.score += citations.length * 5; // 5 points per citation
+        
+        // For homepages, don't expect citations - focus on institutional authority
+        if (!pageType.expectsCitations && citations.length === 0) {
+            authority.signals.push(`Citations not expected for ${pageType.type} - evaluating organizational authority`);
+        }
 
         // External authoritative links
         const authoritativeLinks = this.analyzeAuthoritativeLinks($, url);
@@ -263,6 +277,56 @@ class EATAnalyzer {
         if (blacklist.some(phrase => lowerName.includes(phrase))) return false;
         
         return true;
+    }
+
+    /**
+     * Detect page type to apply appropriate E-A-T criteria
+     */
+    detectPageType($, url) {
+        const urlPath = new URL(url).pathname.toLowerCase();
+        const pageTitle = $('title').text().toLowerCase();
+        const h1Text = $('h1').first().text().toLowerCase();
+        
+        // Homepage detection
+        if (urlPath === '/' || urlPath === '/en/' || urlPath === '/index.html' || 
+            pageTitle.includes('homepage') || pageTitle.includes('home page')) {
+            return {
+                type: 'homepage',
+                expectsAuthors: false,
+                expectsCitations: false,
+                description: 'Corporate homepage - focus on organizational trust signals'
+            };
+        }
+        
+        // Article/Blog detection
+        if (urlPath.includes('/blog/') || urlPath.includes('/news/') || urlPath.includes('/article/') ||
+            urlPath.includes('/story/') || urlPath.includes('/press/') || pageTitle.includes('blog') ||
+            $('article').length > 0 || $('[itemtype*="Article"]').length > 0) {
+            return {
+                type: 'article',
+                expectsAuthors: true,
+                expectsCitations: true,
+                description: 'Article/blog content - requires author attribution and citations'
+            };
+        }
+        
+        // Service/Product pages
+        if (urlPath.includes('/service') || urlPath.includes('/product') || urlPath.includes('/solution')) {
+            return {
+                type: 'service',
+                expectsAuthors: false,
+                expectsCitations: false,
+                description: 'Service/product page - focus on organizational expertise'
+            };
+        }
+        
+        // Default to content page
+        return {
+            type: 'content',
+            expectsAuthors: true,
+            expectsCitations: true,
+            description: 'Content page - standard E-A-T criteria apply'
+        };
     }
 
     /**

@@ -1521,9 +1521,21 @@ class OptimizedAuditOrchestrator {
             // Content validation - check for mismatches between schema and visible content
             const contentValidation = this.validateSchemaContentMatch(schemaData, $);
 
-            // Basic validation
+            // Schema detection evidence tracking
+            let schemaEvidence = {
+                jsonLdScripts: jsonLdScripts.length,
+                microdataItems: microdataItems.length,
+                searchAttempted: true
+            };
+
+            // Honest validation - only claim "not found" when we have evidence
             if (uniqueTypes.length === 0) {
-                issues.push('No structured data found');
+                if (jsonLdScripts.length === 0 && microdataItems.length === 0) {
+                    issues.push(`No structured data detected (searched ${jsonLdScripts.length} JSON-LD scripts, ${microdataItems.length} microdata items)`);
+                } else {
+                    issues.push('Structured data may be present but could not be parsed - manual verification recommended');
+                    schemaEvidence.parsingIssues = true;
+                }
             }
             
             // Add content validation issues
@@ -1954,11 +1966,17 @@ class OptimizedAuditOrchestrator {
             const hasHierarchy = detailedHeadingAnalysis.details.hierarchyValid && headings.h1 > 0;
             const hierarchyDepth = detailedHeadingAnalysis.details.nestingDepth;
 
-            // 4. List Structure Detection (multilingual safe)
+            // 4. List Structure Detection (multilingual safe) - Enhanced to catch navigation lists
             const lists = {
                 unordered: $('ul').length,
                 ordered: $('ol').length,
-                total: $('ul, ol').length
+                navigation: $('nav ul, nav ol, [role="menubar"], [role="menu"]').length,
+                total: $('ul, ol').length + $('nav ul, nav ol, [role="menubar"], [role="menu"]').length,
+                evidence: {
+                    standardLists: $('ul, ol').length,
+                    navigationLists: $('nav ul, nav ol, [role="menubar"], [role="menu"]').length,
+                    searchAttempted: true
+                }
             };
 
             // 5. Conversational Tone Analysis (English-only)
