@@ -1681,8 +1681,8 @@ class OptimizedAuditOrchestrator {
             // Content validation - check for mismatches between schema and visible content
             const contentValidation = this.validateSchemaContentMatch(schemaData, $);
 
-            // Schema detection evidence tracking
-            let schemaEvidence = {
+            // Schema detection evidence tracking  
+            let schemaDetectionSummary = {
                 jsonLdScripts: jsonLdScripts.length,
                 microdataItems: microdataItems.length,
                 searchAttempted: true
@@ -1694,7 +1694,7 @@ class OptimizedAuditOrchestrator {
                     issues.push(`No structured data detected (searched ${jsonLdScripts.length} JSON-LD scripts, ${microdataItems.length} microdata items)`);
                 } else {
                     issues.push('Structured data may be present but could not be parsed - manual verification recommended');
-                    schemaEvidence.parsingIssues = true;
+                    schemaDetectionSummary.parsingIssues = true;
                 }
             }
             
