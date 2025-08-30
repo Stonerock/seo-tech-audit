@@ -1,7 +1,7 @@
 // services/audit-orchestrator.optimized.js
 // Lightweight audit orchestrator with lazy loading of heavy dependencies
 
-const { logger } = require('../utils/logger');
+const { logger } = require('./utils/logger');
 
 class OptimizedAuditOrchestrator {
     constructor() {
