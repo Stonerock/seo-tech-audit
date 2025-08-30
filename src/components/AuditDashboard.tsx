@@ -11,7 +11,7 @@ import { BusinessValueSection } from '@/components/audit/BusinessValueSection';
 import { PSIPerformanceSection } from '@/components/audit/PSIPerformanceSection';
 import { EATAnalysisSection } from '@/components/audit/EATAnalysisSection';
 import { ServerStatus } from '@/components/ServerStatus';
-import { AuditProgressBar, DEFAULT_AUDIT_STEPS } from '@/components/AuditProgressBar';
+import { AuditProgressBar, getAuditSteps } from '@/components/AuditProgressBar';
 import { auditService } from '@/services/auditService';
 import { isValidURL } from '@/lib/utils';
 import type { AuditResult, LoadingState } from '@/types/audit';
@@ -24,7 +24,7 @@ export function AuditDashboard() {
   const [activeTab, setActiveTab] = useState<'single' | 'batch'>('single');
   
   // Progress tracking
-  const [auditSteps, setAuditSteps] = useState(DEFAULT_AUDIT_STEPS);
+  const [auditSteps, setAuditSteps] = useState(getAuditSteps());
   const [currentStep, setCurrentStep] = useState('');
   const [auditStartTime, setAuditStartTime] = useState(0);
 
@@ -59,9 +59,10 @@ export function AuditDashboard() {
     setError(null);
     setResults(null);
     
-    // Initialize progress tracking
+    // Initialize progress tracking with dynamic steps based on analysis type
     setAuditStartTime(Date.now());
-    setAuditSteps(DEFAULT_AUDIT_STEPS.map(step => ({ ...step, status: 'pending' })));
+    const dynamicSteps = getAuditSteps(fullAnalysis);
+    setAuditSteps(dynamicSteps.map(step => ({ ...step, status: 'pending' })));
     setCurrentStep('fetch');
 
     // Simulate step progression (since we don't have real-time backend progress)

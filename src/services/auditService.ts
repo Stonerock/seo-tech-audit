@@ -38,7 +38,7 @@ export class AuditService {
     try {
       // Add timeout based on mode - improved timeouts for dynamic sites
       const controller = new AbortController();
-      const timeoutMs = options.fastMode ? 35000 : 60000; // 35s for fast mode, 60s for full audit (aligned with backend)
+      const timeoutMs = options.fastMode ? 35000 : options.fullAnalysis ? 180000 : 90000; // 35s fast, 180s browserless, 90s normal
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       
       // Use POST request as expected by the deployed backend

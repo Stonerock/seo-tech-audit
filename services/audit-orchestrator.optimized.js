@@ -267,8 +267,8 @@ class OptimizedAuditOrchestrator {
         logger.info(`Starting lightweight audit for: ${url}`, { options });
 
         try {
-            // Global timeout for entire audit - adaptive based on site complexity
-            const globalTimeoutMs = options.fastMode ? 25000 : 45000;
+            // Global timeout for entire audit - adaptive based on site complexity and browserless usage
+            const globalTimeoutMs = options.fastMode ? 25000 : options.enableJS ? 180000 : 60000; // 25s fast, 180s browserless, 60s normal
             const auditTimeout = setTimeout(() => {
                 throw new Error(`Audit timeout exceeded ${globalTimeoutMs / 1000} seconds`);
             }, globalTimeoutMs);
@@ -440,7 +440,7 @@ class OptimizedAuditOrchestrator {
                         const renderOptions = {
                             includePerformance: options.includeLighthouse !== false, // Default to true
                             includeScreenshot: options.includeScreenshot !== false,
-                            timeout: options.timeout || 30000
+                            timeout: options.timeout || 90000 // Increase browserless timeout to 90 seconds
                         };
                         const renderResult = await jsRenderer.renderPage(url, renderOptions);
                         

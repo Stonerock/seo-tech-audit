@@ -155,6 +155,28 @@ export function AuditProgressBar({ currentStep, steps, startTime, onCancel }: Au
 }
 
 // Default audit steps configuration
+// Function to get steps with adjusted timings for browserless analysis
+export const getAuditSteps = (fullAnalysis = false): AuditStep[] => {
+  const baseSteps = DEFAULT_AUDIT_STEPS;
+  if (!fullAnalysis) return baseSteps;
+  
+  // Adjust timings for browserless.io analysis
+  return baseSteps.map(step => {
+    if (step.id === 'ai-optimization') {
+      return {
+        ...step,
+        name: 'Enhanced AI Analysis (browserless.io)',
+        description: 'Running deep JavaScript analysis with browserless.io rendering',
+        estimatedDuration: 90 // Much longer for browserless analysis
+      };
+    }
+    if (step.id === 'fetch') {
+      return { ...step, estimatedDuration: 8 }; // Longer initial fetch for JS sites
+    }
+    return step;
+  });
+};
+
 export const DEFAULT_AUDIT_STEPS: AuditStep[] = [
   {
     id: 'fetch',
@@ -202,7 +224,7 @@ export const DEFAULT_AUDIT_STEPS: AuditStep[] = [
     id: 'ai-optimization',
     name: 'AI Optimization Analysis',
     description: 'Running comprehensive 5-category AI readiness analysis',
-    estimatedDuration: 12,
+    estimatedDuration: 12, // Will be dynamically adjusted for browserless.io
     status: 'pending'
   },
   {
