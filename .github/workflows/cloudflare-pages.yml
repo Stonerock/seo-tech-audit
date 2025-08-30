@@ -60,13 +60,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
         
-      - name: Skip tests for frontend deployment
-        run: |
-          echo "Skipping tests for frontend-only deployment"
-          echo "Backend tests should be run in separate backend deployment workflow"
-        
       - name: Install Wrangler CLI
-        run: npm install -g wrangler
+        run: npm install -g wrangler@latest
         
       - name: Build production assets
         run: |
@@ -100,7 +95,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=seo-audit-tool
+          command: pages deploy dist --project-name=seo-audit-tool-e50
           
       - name: Deployment Success
         run: |
