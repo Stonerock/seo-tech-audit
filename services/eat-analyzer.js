@@ -762,18 +762,28 @@ class EATAnalyzer {
      */
     generateEATRecommendations(analysis) {
         const recommendations = [];
+        const pageType = analysis.pageType;
 
-        // Expertise recommendations
+        // Expertise recommendations - adjust based on page type
         if (analysis.expertise.score < 30) {
-            recommendations.push({
-                priority: 'high',
-                category: 'expertise',
-                title: 'Add Author Information',
-                description: 'Include author bios with credentials and expertise indicators'
-            });
+            if (pageType.expectsAuthors) {
+                recommendations.push({
+                    priority: 'high',
+                    category: 'expertise',
+                    title: 'Add Author Information',
+                    description: 'Include author bios with credentials and expertise indicators'
+                });
+            } else {
+                recommendations.push({
+                    priority: 'medium',
+                    category: 'expertise',
+                    title: 'Strengthen Organizational Expertise',
+                    description: 'Highlight company credentials, certifications, and team expertise'
+                });
+            }
         }
 
-        if (analysis.expertise.authors.length === 0) {
+        if (analysis.expertise.authors.length === 0 && pageType.expectsAuthors) {
             recommendations.push({
                 priority: 'high',
                 category: 'expertise',
@@ -782,8 +792,8 @@ class EATAnalyzer {
             });
         }
 
-        // Authority recommendations
-        if (analysis.authoritativeness.citations.length === 0) {
+        // Authority recommendations - adjust based on page type
+        if (analysis.authoritativeness.citations.length === 0 && pageType.expectsCitations) {
             recommendations.push({
                 priority: 'medium',
                 category: 'authority',

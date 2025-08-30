@@ -38,7 +38,64 @@ class OptimizedAuditOrchestrator {
         };
     }
 
-    // Optimized HTTP client with caching and limits
+    // Follow redirects and track redirect chain
+    async followRedirects(url, options = {}, maxRedirects = 5) {
+        const redirectChain = [];
+        let currentUrl = url;
+        let redirectCount = 0;
+        
+        while (redirectCount < maxRedirects) {
+            const startTime = Date.now();
+            const fetch = require('node-fetch');
+            
+            const response = await fetch(currentUrl, {
+                timeout: options.adaptiveTimeout ? this.dynamicSiteTimeout : this.requestTimeout,
+                redirect: 'manual',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; AttentionBot/1.0; +https://attentionisallyouneed.app)',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Cache-Control': 'no-cache',
+                    ...options.headers
+                },
+                ...options
+            });
+            
+            const responseTime = Date.now() - startTime;
+            
+            // Track this step in redirect chain
+            redirectChain.push({
+                url: currentUrl,
+                status: response.status,
+                responseTime,
+                isRedirect: response.status >= 300 && response.status < 400
+            });
+            
+            // If not a redirect, we're done
+            if (response.status < 300 || response.status >= 400) {
+                return {
+                    response,
+                    finalUrl: currentUrl,
+                    redirectChain,
+                    totalRedirects: redirectCount
+                };
+            }
+            
+            // Follow redirect
+            const location = response.headers.get('location');
+            if (!location) {
+                throw new Error(`Redirect without location header at ${currentUrl}`);
+            }
+            
+            currentUrl = new URL(location, currentUrl).href;
+            redirectCount++;
+        }
+        
+        throw new Error(`Too many redirects (>${maxRedirects}) starting from ${url}`);
+    }
+
+    // Optimized HTTP client with caching and redirect handling
     async makeOptimizedRequest(url, options = {}) {
         const cacheKey = `${url}-${JSON.stringify(options)}`;
         
@@ -53,32 +110,9 @@ class OptimizedAuditOrchestrator {
         }
         
         try {
-            const fetch = require('node-fetch');
-            const response = await fetch(url, {
-                timeout: options.adaptiveTimeout ? this.dynamicSiteTimeout : this.requestTimeout,
-                redirect: 'manual',
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (compatible; AttentionBot/1.0; +https://attentionisallyouneed.app)',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Cache-Control': 'no-cache',
-                    ...options.headers
-                },
-                ...options
-            });
-            
-            // Handle redirects efficiently
-            if (response.status >= 300 && response.status < 400 && options.followRedirects !== false) {
-                const location = response.headers.get('location');
-                if (location && this.maxRedirects > 0) {
-                    const absoluteUrl = new URL(location, url).href;
-                    return await this.makeOptimizedRequest(absoluteUrl, { 
-                        ...options, 
-                        followRedirects: (options.followRedirects || this.maxRedirects) - 1 
-                    });
-                }
-            }
+            // Follow redirects and get final response
+            const redirectResult = await this.followRedirects(url, options);
+            const response = redirectResult.response;
             
             // Check content length before reading
             const contentLength = response.headers.get('content-length');
@@ -90,8 +124,10 @@ class OptimizedAuditOrchestrator {
                 status: response.status,
                 statusText: response.statusText,
                 headers: Object.fromEntries(response.headers.entries()),
-                url: response.url,
-                body: null
+                url: redirectResult.finalUrl, // Use final URL after redirects
+                body: null,
+                redirectChain: redirectResult.redirectChain, // Include redirect chain in response
+                totalRedirects: redirectResult.totalRedirects
             };
             
             // Only read body if needed
@@ -458,6 +494,11 @@ class OptimizedAuditOrchestrator {
                             seo: await this.analyzeRenderedSEO($js, renderResult.html, url),
                             accessibility: await this.analyzeRenderedAccessibility($js),
                             schema: await this.analyzeRenderedSchema($js),
+                            // Re-run AEO analysis with rendered content for better list/heading detection
+                            aeo: await this.checkAEOReadiness(url, { 
+                                renderedContent: { html: renderResult.html },
+                                phase: 'javascript' 
+                            }),
                             metrics: renderResult.metrics,
                             jsMetrics: renderResult.jsMetrics,
                             // Include Lighthouse performance data if available
@@ -531,6 +572,15 @@ class OptimizedAuditOrchestrator {
                 if (jsResults.screenshot) {
                     combinedResults.artifacts = combinedResults.artifacts || {};
                     combinedResults.artifacts.screenshot = jsResults.screenshot;
+                }
+                
+                // Replace AEO results with rendered version for better list/heading detection
+                if (jsResults.aeo) {
+                    combinedResults.tests.aeo = {
+                        ...jsResults.aeo,
+                        analysisMethod: 'javascript-rendered',
+                        staticComparison: this.compareAEOResults(staticResults.tests.aeo, jsResults.aeo)
+                    };
                 }
                 
                 // Update confidence indicators
@@ -658,6 +708,83 @@ class OptimizedAuditOrchestrator {
         }
         
         return differences;
+    }
+
+    // Compare static vs JavaScript-rendered AEO results
+    compareAEOResults(staticAEO, jsAEO) {
+        if (!staticAEO || !jsAEO) return null;
+        
+        const comparison = {
+            lists: {
+                static: staticAEO.lists?.total || 0,
+                rendered: jsAEO.lists?.total || 0,
+                improvement: (jsAEO.lists?.total || 0) - (staticAEO.lists?.total || 0)
+            },
+            headings: {
+                static: staticAEO.headingStructure?.counts ? 
+                    Object.values(staticAEO.headingStructure.counts).reduce((sum, count) => sum + count, 0) : 0,
+                rendered: jsAEO.headingStructure?.counts ? 
+                    Object.values(jsAEO.headingStructure.counts).reduce((sum, count) => sum + count, 0) : 0
+            },
+            score: {
+                static: staticAEO.score || 0,
+                rendered: jsAEO.score || 0,
+                improvement: (jsAEO.score || 0) - (staticAEO.score || 0)
+            }
+        };
+        
+        comparison.headings.improvement = comparison.headings.rendered - comparison.headings.static;
+        comparison.significantImprovement = 
+            comparison.lists.improvement > 2 || 
+            comparison.headings.improvement > 3 || 
+            comparison.score.improvement > 10;
+            
+        return comparison;
+    }
+
+    // Generate performance warnings including redirect issues
+    generatePerformanceWarnings(response) {
+        const warnings = [];
+        
+        // Redirect warnings
+        if (response.totalRedirects > 0) {
+            if (response.totalRedirects >= 3) {
+                warnings.push({
+                    type: 'redirect',
+                    severity: 'high',
+                    message: `Too many redirects (${response.totalRedirects}). Each redirect adds latency and negatively impacts Core Web Vitals.`,
+                    recommendation: 'Minimize redirect chains, ideally to 0-1 redirects maximum.'
+                });
+            } else if (response.totalRedirects === 2) {
+                warnings.push({
+                    type: 'redirect',
+                    severity: 'medium',
+                    message: `Multiple redirects detected (${response.totalRedirects}). This may impact page load speed.`,
+                    recommendation: 'Consider reducing redirects for optimal performance.'
+                });
+            } else {
+                warnings.push({
+                    type: 'redirect',
+                    severity: 'low',
+                    message: `One redirect detected. Acceptable but could be optimized.`,
+                    recommendation: 'Consider serving content directly without redirects when possible.'
+                });
+            }
+            
+            // Additional redirect time warning
+            const redirectTime = response.redirectChain ? 
+                response.redirectChain.reduce((total, step) => total + (step.responseTime || 0), 0) : 0;
+            if (redirectTime > 500) {
+                warnings.push({
+                    type: 'redirect',
+                    severity: 'medium',
+                    message: `Redirects are taking ${redirectTime}ms. This contributes significantly to total page load time.`,
+                    recommendation: 'Optimize redirect destinations for faster response times.'
+                });
+            }
+        }
+        
+        return warnings;
     }
 
     // Basic SEO check using optimized HTTP client
@@ -815,6 +942,16 @@ class OptimizedAuditOrchestrator {
                 cacheControl: response.headers['cache-control'] || '',
                 compression: response.headers['content-encoding'] || 'none',
                 score: responseTime < 1000 ? 100 : responseTime < 2000 ? 80 : responseTime < 3000 ? 60 : 40,
+                // Redirect analysis
+                redirectAnalysis: {
+                    totalRedirects: response.totalRedirects || 0,
+                    redirectChain: response.redirectChain || [],
+                    finalUrl: response.url,
+                    originalUrl: url,
+                    hasRedirects: (response.totalRedirects || 0) > 0,
+                    redirectTime: response.redirectChain ? 
+                        response.redirectChain.reduce((total, step) => total + (step.responseTime || 0), 0) : 0
+                },
                 // Frontend-compatible structure
                 metrics: {
                     firstContentfulPaint: responseTime * 0.6, // Estimate FCP as 60% of response time
@@ -828,7 +965,9 @@ class OptimizedAuditOrchestrator {
                     overall: responseTime < 1500 ? 'good' : responseTime < 3000 ? 'needs-improvement' : 'poor',
                     fcp: responseTime < 1800 ? 'good' : responseTime < 3000 ? 'needs-improvement' : 'poor',
                     loadTime: responseTime < 3000 ? 'good' : responseTime < 5000 ? 'needs-improvement' : 'poor'
-                }
+                },
+                // Performance warnings including redirect issues
+                warnings: this.generatePerformanceWarnings(response)
             };
         } catch (error) {
             throw new Error(`Performance check failed: ${error.message}`);
@@ -1434,6 +1573,7 @@ class OptimizedAuditOrchestrator {
             const types = [];
             const issues = [];
             const schemaData = []; // Store actual schema objects for field analysis
+            const schemaEvidence = []; // Store evidence of schemas found
 
             // Enhanced JSON-LD parsing (tolerant to real-world markup)
             jsonLdScripts.each((i, script) => {
@@ -1473,6 +1613,16 @@ class OptimizedAuditOrchestrator {
                     if (parsed) {
                         schemaData.push(parsed);
                         this.extractTypesFromJsonLd(parsed, types);
+                        
+                        // Capture evidence for first 3 schemas
+                        if (schemaEvidence.length < 3) {
+                            schemaEvidence.push({
+                                type: 'json-ld',
+                                snippet: cleaned.substring(0, 200), // First 200 chars
+                                location: `script[${i + 1}]`,
+                                hasType: !!(parsed['@type'] || (Array.isArray(parsed) && parsed[0]?.['@type']))
+                            });
+                        }
                     }
                 } catch (e) {
                     issues.push(`JSON-LD processing error: ${e.message.substring(0, 80)}`);
@@ -1487,6 +1637,16 @@ class OptimizedAuditOrchestrator {
                     const typeMatch = itemType.match(/schema\.org\/(.+)$/);
                     if (typeMatch) {
                         types.push(typeMatch[1]);
+                        
+                        // Capture microdata evidence for first 2 items
+                        if (schemaEvidence.filter(e => e.type === 'microdata').length < 2) {
+                            schemaEvidence.push({
+                                type: 'microdata',
+                                itemType: itemType,
+                                element: el.tagName.toLowerCase(),
+                                hasItemProp: !!($(el).attr('itemprop') || $(el).find('[itemprop]').length > 0)
+                            });
+                        }
                     } else {
                         // Fallback for other formats
                         const type = itemType.split('/').pop();
@@ -1554,6 +1714,7 @@ class OptimizedAuditOrchestrator {
                 aiReadinessScore,
                 fieldCoveragePercent: schemaAnalysis.coveragePercent,
                 contentValidation: contentValidation,
+                evidence: schemaEvidence, // DOM evidence for verification
                 // Legacy score for backward compatibility
                 score: aiReadinessScore
             };
@@ -1801,8 +1962,15 @@ class OptimizedAuditOrchestrator {
             }
         }
         
-        // Use optimized lightweight audit by default (faster)
-        return await this.performLightweightAudit(url, options);
+        // Use two-pass audit if JavaScript renderer available, otherwise lightweight
+        const jsRenderer = await this.loadJSRenderer();
+        if (jsRenderer && !options.fastMode) {
+            logger.info('Using two-pass audit with JavaScript rendering for enhanced list/heading detection');
+            return await this.performTwoPassAudit(url, { ...options, enableJS: true });
+        } else {
+            logger.info('JavaScript renderer not available or fast mode enabled, using lightweight audit');
+            return await this.performLightweightAudit(url, options);
+        }
     }
 
     async performPuppeteerAudit(url, options = {}) {
@@ -1894,7 +2062,20 @@ class OptimizedAuditOrchestrator {
     // AEO (Answer Engine Optimization) readiness analysis - optimized
     async checkAEOReadiness(url, options = {}) {
         try {
-            const pageContent = await this.getPageContent(url);
+            // Use rendered content if available from browserless.io, otherwise fallback to static
+            let pageContent;
+            if (options.renderedContent && options.renderedContent.html) {
+                const cheerio = require('cheerio');
+                pageContent = {
+                    html: options.renderedContent.html,
+                    $: cheerio.load(options.renderedContent.html),
+                    url: url,
+                    status: 200,
+                    headers: {}
+                };
+            } else {
+                pageContent = await this.getPageContent(url);
+            }
             const { $, html } = pageContent;
 
             // Detect language for scoping checks
@@ -1937,12 +2118,24 @@ class OptimizedAuditOrchestrator {
             // 3. Enhanced Heading Structure Analysis (multilingual safe)
             // Extract detailed heading information for enhanced analysis
             const headingElements = [];
+            const headingEvidence = []; // DOM evidence for verification
             $('h1, h2, h3, h4, h5, h6').each((i, el) => {
-                headingElements.push({
+                const headingData = {
                     level: parseInt(el.tagName.slice(1)),
                     text: $(el).text().trim(),
                     id: $(el).attr('id') || null
-                });
+                };
+                headingElements.push(headingData);
+                
+                // Capture first 5 headings as evidence for verification
+                if (i < 5) {
+                    headingEvidence.push({
+                        tag: el.tagName.toLowerCase(),
+                        text: headingData.text.substring(0, 100), // First 100 chars
+                        hasId: !!headingData.id,
+                        position: i + 1
+                    });
+                }
             });
 
             // Use enhanced AI analyzer for detailed heading analysis
@@ -2015,7 +2208,8 @@ class OptimizedAuditOrchestrator {
                     detailsAnalysis: detailedHeadingAnalysis.details,
                     analysisScore: detailedHeadingAnalysis.score,
                     analysisIssues: detailedHeadingAnalysis.issues,
-                    analysisStrengths: detailedHeadingAnalysis.strengths
+                    analysisStrengths: detailedHeadingAnalysis.strengths,
+                    evidence: headingEvidence // DOM evidence for verification
                 },
                 lists: {
                     ...lists,

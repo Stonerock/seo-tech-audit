@@ -135,7 +135,7 @@ class PageSpeedInsights {
         metrics: {
           fcp: lhr.audits?.['first-contentful-paint']?.displayValue || 'N/A',
           lcp: lhr.audits?.['largest-contentful-paint']?.displayValue || 'N/A',
-          fid: lhr.audits?.['max-potential-fid']?.displayValue || 'N/A',
+          inp: lhr.audits?.['interaction-to-next-paint']?.displayValue || lhr.audits?.['max-potential-fid']?.displayValue || 'N/A', // INP with FID fallback
           cls: lhr.audits?.['cumulative-layout-shift']?.displayValue || 'N/A',
           speedIndex: lhr.audits?.['speed-index']?.displayValue || 'N/A',
           tbt: lhr.audits?.['total-blocking-time']?.displayValue || 'N/A'
@@ -145,7 +145,7 @@ class PageSpeedInsights {
           fcp: this.getMetricStatus(lhr.audits?.['first-contentful-paint']?.score),
           lcp: this.getMetricStatus(lhr.audits?.['largest-contentful-paint']?.score),
           cls: this.getMetricStatus(lhr.audits?.['cumulative-layout-shift']?.score),
-          fid: this.getMetricStatus(lhr.audits?.['max-potential-fid']?.score)
+          inp: this.getMetricStatus(lhr.audits?.['interaction-to-next-paint']?.score || lhr.audits?.['max-potential-fid']?.score) // INP with FID fallback
         }
       },
 

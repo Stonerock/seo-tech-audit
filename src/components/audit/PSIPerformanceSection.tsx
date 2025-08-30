@@ -174,17 +174,17 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
               </div>
             </div>
 
-            {/* First Input Delay */}
+            {/* Interaction to Next Paint */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-medium text-sm">First Input Delay</h4>
-                  <p className="text-xl font-bold">{psiData.performance.metrics.fid}</p>
+                  <h4 className="font-medium text-sm">Interaction to Next Paint</h4>
+                  <p className="text-xl font-bold">{psiData.performance.metrics.inp}</p>
                 </div>
                 <Activity className="w-5 h-5 text-muted-foreground" />
               </div>
-              <div className={`text-xs px-2 py-1 rounded border ${getVitalColor(psiData.performance.coreWebVitals.fid)}`}>
-                {getVitalLabel(psiData.performance.coreWebVitals.fid)}
+              <div className={`text-xs px-2 py-1 rounded border ${getVitalColor(psiData.performance.coreWebVitals.inp)}`}>
+                {getVitalLabel(psiData.performance.coreWebVitals.inp)}
               </div>
             </div>
           </div>

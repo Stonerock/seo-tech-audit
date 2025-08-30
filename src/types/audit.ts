@@ -69,6 +69,19 @@ export interface PerformanceResult {
   server: string;
   cacheControl: string;
   compression: string;
+  redirectAnalysis?: {
+    totalRedirects: number;
+    redirectChain: Array<{
+      url: string;
+      status: number;
+      responseTime: number;
+      isRedirect: boolean;
+    }>;
+    finalUrl: string;
+    originalUrl: string;
+    hasRedirects: boolean;
+    redirectTime: number;
+  };
   metrics?: {
     firstContentfulPaint: number;
     loadComplete: number;
@@ -402,7 +415,7 @@ export interface PSIResult {
     metrics: {
       fcp: string;
       lcp: string;
-      fid: string;
+      inp: string; // Interaction to Next Paint (replaced FID in Mar 2024)
       cls: string;
       speedIndex: string;
       tbt: string;
@@ -411,7 +424,7 @@ export interface PSIResult {
       fcp: 'good' | 'needs-improvement' | 'poor';
       lcp: 'good' | 'needs-improvement' | 'poor';
       cls: 'good' | 'needs-improvement' | 'poor';
-      fid: 'good' | 'needs-improvement' | 'poor';
+      inp: 'good' | 'needs-improvement' | 'poor'; // INP replaced FID as Core Web Vital
     };
   };
   seo?: {
