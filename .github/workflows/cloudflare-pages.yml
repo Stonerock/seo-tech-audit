@@ -95,7 +95,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=seo-audit-tool-e50
+          command: pages deploy dist --project-name=seo-audit-tool --commit-dirty=true
           
       - name: Deployment Success
         run: |
