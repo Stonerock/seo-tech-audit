@@ -2622,7 +2622,7 @@ class OptimizedAuditOrchestrator {
 }
 
 // Server setup
-if (require.main === module) {
+if (true) {
     const express = require('express');
     const cors = require('cors');
     const app = express();
