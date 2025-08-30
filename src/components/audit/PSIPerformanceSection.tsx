@@ -8,8 +8,9 @@ interface PSIPerformanceSectionProps {
 }
 
 export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
-  // Safety check for undefined performance data
-  if (!psiData?.performance) {
+  // Safety check for undefined performance data - more robust checking
+  if (!psiData || !psiData.performance || typeof psiData.performance.score === 'undefined') {
+    console.log('PSI data missing:', { psiData, hasPerformance: !!psiData?.performance, score: psiData?.performance?.score });
     return (
       <Card className="border-amber-200 bg-amber-50/50">
         <CardContent className="p-6">

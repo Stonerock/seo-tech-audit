@@ -473,7 +473,7 @@ Analysis Tool: AttentionIsAllYouNeed.app`;
                 <AttentionCards results={results} />
                 
                 {/* PSI Performance Section */}
-                {results.psiMetrics && (
+                {results.psiMetrics && results.psiMetrics.performance && (
                   <div className="border-t border-border pt-8">
                     <h2 className="academic-section-title">PageSpeed Insights Performance</h2>
                     <PSIPerformanceSection psiData={results.psiMetrics} />
