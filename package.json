@@ -33,6 +33,10 @@
     "npm": ">=8.0.0"
   },
   "dependencies": {
+    "@axe-core/puppeteer": "^4.10.2",
+    "@google-cloud/firestore": "^7.10.0",
+    "@google-cloud/pubsub": "^4.7.3",
+    "@google-cloud/secret-manager": "^6.1.0",
     "@radix-ui/react-progress": "^1.1.7",
     "@tailwindcss/typography": "^0.5.16",
     "cheerio": "^1.0.0-rc.12",
@@ -42,18 +46,20 @@
     "dotenv": "^16.4.5",
     "express": "^4.18.2",
     "express-rate-limit": "^7.3.0",
+    "keyword-extractor": "^0.0.28",
     "lucide-react": "^0.294.0",
     "node-fetch": "^2.7.0",
     "playwright-core": "^1.55.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "sentiment": "^5.0.2",
+    "stopword": "^3.1.5",
     "tailwind-merge": "^2.2.0",
+    "tiktoken": "^1.0.22",
     "uuid": "^11.1.0",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "xml2js": "^0.6.2",
-    "@google-cloud/firestore": "^7.10.0",
-    "@google-cloud/pubsub": "^4.7.3"
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

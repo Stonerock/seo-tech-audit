@@ -63,6 +63,48 @@
     "identifyingSchemas": ["Organization", "Corporation", "Company"],
     "fallbackKeywords": ["about", "company", "team", "services", "business"]
   },
+  "FAQ": {
+    "name": "FAQ/Question Page",
+    "description": "FAQ or question-answer content",
+    "requiredFields": {
+      "mainEntity.name": 25,
+      "mainEntity.acceptedAnswer.text": 25,
+      "name": 15,
+      "description": 15,
+      "author": 10,
+      "datePublished": 10
+    },
+    "identifyingSchemas": ["FAQPage", "QAPage", "Question"],
+    "fallbackKeywords": ["faq", "question", "answer", "help", "support", "guide"]
+  },
+  "HowTo": {
+    "name": "How-To/Tutorial",
+    "description": "Step-by-step instructional content",
+    "requiredFields": {
+      "name": 25,
+      "description": 20,
+      "step.name": 20,
+      "step.text": 15,
+      "image": 10,
+      "totalTime": 10
+    },
+    "identifyingSchemas": ["HowTo", "Recipe"],
+    "fallbackKeywords": ["how to", "tutorial", "guide", "steps", "instructions", "recipe"]
+  },
+  "NewsArticle": {
+    "name": "News/Editorial",
+    "description": "News articles and editorial content",
+    "requiredFields": {
+      "headline": 25,
+      "author.name": 20,
+      "datePublished": 20,
+      "publisher.name": 15,
+      "image": 10,
+      "articleBody": 10
+    },
+    "identifyingSchemas": ["NewsArticle", "Article", "BlogPosting"],
+    "fallbackKeywords": ["news", "article", "blog", "editorial", "press", "story"]
+  },
   "WebPage": {
     "name": "General Website",
     "description": "Generic website or content site",

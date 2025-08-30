@@ -108,6 +108,7 @@ export function AIAnalysisSection({ results }: AIAnalysisSectionProps) {
         `llms.txt: ${results.tests.files.llms?.exists ? '✓ Present' : '✗ Missing (site-wide, optional)'}`
       ] : ['File analysis unavailable']
     }
+    // Enhanced content patterns analysis will be shown in AEO section
   ];
 
   return (

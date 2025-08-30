@@ -11,6 +11,7 @@ import { BusinessValueSection } from '@/components/audit/BusinessValueSection';
 import { PSIPerformanceSection } from '@/components/audit/PSIPerformanceSection';
 import { EATAnalysisSection } from '@/components/audit/EATAnalysisSection';
 import { ServerStatus } from '@/components/ServerStatus';
+import { AuditProgressBar, DEFAULT_AUDIT_STEPS } from '@/components/AuditProgressBar';
 import { auditService } from '@/services/auditService';
 import { isValidURL } from '@/lib/utils';
 import type { AuditResult, LoadingState } from '@/types/audit';
@@ -21,10 +22,18 @@ export function AuditDashboard() {
   const [loadingState, setLoadingState] = useState<LoadingState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'single' | 'batch'>('single');
+  
+  // Progress tracking
+  const [auditSteps, setAuditSteps] = useState(DEFAULT_AUDIT_STEPS);
+  const [currentStep, setCurrentStep] = useState('');
+  const [auditStartTime, setAuditStartTime] = useState(0);
 
   // URL validation
   const [urlError, setUrlError] = useState<string | null>(null);
   const [isUrlValid, setIsUrlValid] = useState(false);
+  
+  // Analysis options
+  const [fullAnalysis, setFullAnalysis] = useState(false);
 
   useEffect(() => {
     if (!url) {
@@ -49,15 +58,67 @@ export function AuditDashboard() {
     setLoadingState('loading');
     setError(null);
     setResults(null);
+    
+    // Initialize progress tracking
+    setAuditStartTime(Date.now());
+    setAuditSteps(DEFAULT_AUDIT_STEPS.map(step => ({ ...step, status: 'pending' })));
+    setCurrentStep('fetch');
+
+    // Simulate step progression (since we don't have real-time backend progress)
+    const stepSequence = ['fetch', 'seo', 'performance', 'schema', 'accessibility', 'psi', 'ai-optimization', 'finalize'];
+    let stepIndex = 0;
+
+    const progressInterval = setInterval(() => {
+      if (stepIndex < stepSequence.length - 1) {
+        const currentStepId = stepSequence[stepIndex];
+        const nextStepId = stepSequence[stepIndex + 1];
+        
+        // Mark current step as completed
+        setAuditSteps(prev => prev.map(step => 
+          step.id === currentStepId 
+            ? { ...step, status: 'completed', actualDuration: Math.floor((Date.now() - auditStartTime) / 1000) }
+            : step
+        ));
+        
+        // Start next step
+        setCurrentStep(nextStepId);
+        setAuditSteps(prev => prev.map(step => 
+          step.id === nextStepId 
+            ? { ...step, status: 'running' }
+            : step
+        ));
+        
+        stepIndex++;
+      }
+    }, 2000); // Update every 2 seconds
 
     try {
       const auditResults = await auditService.performAudit(url, { 
-        includePSI: true // Always include PageSpeed Insights for Core Web Vitals
+        includePSI: true, // Always include PageSpeed Insights for Core Web Vitals
+        fullAnalysis: fullAnalysis // Enable browserless.io for enhanced analysis
       });
+      
+      clearInterval(progressInterval);
+      
+      // Mark final step as completed
+      setAuditSteps(prev => prev.map(step => 
+        step.id === 'finalize' 
+          ? { ...step, status: 'completed', actualDuration: Math.floor((Date.now() - auditStartTime) / 1000) }
+          : step
+      ));
       
       setResults(auditResults);
       setLoadingState('success');
     } catch (err) {
+      clearInterval(progressInterval);
+      
+      // Mark current step as error
+      setAuditSteps(prev => prev.map(step => 
+        step.id === currentStep 
+          ? { ...step, status: 'error' }
+          : step
+      ));
+      
       const errorMessage = err instanceof Error 
         ? err.message 
         : 'An unexpected error occurred during the audit';
@@ -203,6 +264,22 @@ export function AuditDashboard() {
 
                 {/* Options & Secondary Actions */}
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between pt-4 border-t border-border/50">
+                  
+                  {/* Analysis Options */}
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={fullAnalysis}
+                        onChange={(e) => setFullAnalysis(e.target.checked)}
+                        className="rounded border-border text-primary focus:ring-primary"
+                      />
+                      <span className="text-muted-foreground">
+                        Use full analysis 
+                        <span className="text-xs text-muted-foreground/70 ml-1">(browserless.io rendering)</span>
+                      </span>
+                    </label>
+                  </div>
 
                   {/* Secondary Actions */}
                   <div className="flex gap-2">
@@ -288,25 +365,19 @@ export function AuditDashboard() {
               </Card>
             )}
 
-            {/* Loading State */}
+            {/* Loading State with Progress */}
             {loadingState === 'loading' && (
-              <Card className="mb-8 bg-primary/5 border-primary/20">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-center space-y-4 py-8">
-                    <div className="text-center">
-                      <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-primary" />
-                      <h3 className="font-semibold mb-2">Conducting comprehensive analysis...</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Analyzing SEO compliance, performance metrics, and accessibility standards.
-                        <br />
-                        <span className="text-xs">
-                          Expected completion: 15-30 seconds
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="mb-8">
+                <AuditProgressBar
+                  currentStep={currentStep}
+                  steps={auditSteps}
+                  startTime={auditStartTime}
+                  onCancel={() => {
+                    setLoadingState('idle');
+                    setCurrentStep('');
+                  }}
+                />
+              </div>
             )}
 
             {/* Results Display */}

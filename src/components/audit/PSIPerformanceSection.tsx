@@ -8,6 +8,20 @@ interface PSIPerformanceSectionProps {
 }
 
 export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
+  // Safety check for undefined performance data
+  if (!psiData?.performance) {
+    return (
+      <Card className="border-amber-200 bg-amber-50/50">
+        <CardContent className="p-6">
+          <div className="text-center text-muted-foreground">
+            <Activity className="w-8 h-8 mx-auto mb-2" />
+            <p>Performance data not available</p>
+            <p className="text-xs mt-1">PSI analysis may have failed or timed out</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
   const getScoreColor = (score: number) => {
     if (score >= 90) return 'text-emerald-600';
     if (score >= 70) return 'text-green-600';
@@ -60,13 +74,13 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
             {/* Performance Score */}
             <div className="text-center space-y-2">
-              <div className={`text-4xl font-bold ${getScoreColor(psiData.performance.score)}`}>
-                {psiData.performance.score}
+              <div className={`text-4xl font-bold ${getScoreColor(psiData.performance?.score || 0)}`}>
+                {psiData.performance?.score || 0}
               </div>
               <div className="text-sm text-muted-foreground">Performance Score</div>
               <Progress 
-                value={psiData.performance.score} 
-                status={getScoreStatus(psiData.performance.score)} 
+                value={psiData.performance?.score || 0} 
+                status={getScoreStatus(psiData.performance?.score || 0)} 
                 className="h-2" 
               />
             </div>

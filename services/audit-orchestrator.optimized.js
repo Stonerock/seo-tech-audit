@@ -282,11 +282,12 @@ class OptimizedAuditOrchestrator {
             const checks = [
                 this.checkBasicSEO(url, auditOptions),
                 this.checkBasicPerformance(url, auditOptions),
-                this.checkBasicAccessibility(url, auditOptions),
+                this.checkAxeAccessibility(url, auditOptions),
                 this.checkBasicFiles(url, auditOptions),
                 this.checkBasicMetadata(url, auditOptions),
                 this.checkBasicSchema(url, auditOptions),
-                this.checkEATSignals(url, auditOptions)
+                this.checkEATSignals(url, auditOptions),
+                this.checkPSIMetrics(url, auditOptions)
             ];
 
             // Add Lighthouse check if requested (but skip if too slow)
@@ -314,6 +315,7 @@ class OptimizedAuditOrchestrator {
                     schema: results[5].status === 'fulfilled' ? results[5].value : { error: results[5].reason?.message },
                     eat: results[6].status === 'fulfilled' ? results[6].value : { error: results[6].reason?.message }
                 },
+                psiMetrics: results[7].status === 'fulfilled' ? results[7].value : { error: results[7].reason?.message },
                 mode: options.includeLighthouse ? 'enhanced' : 'lightweight'
             };
             
@@ -327,8 +329,8 @@ class OptimizedAuditOrchestrator {
             });
 
             // Add lighthouse results if available
-            const lighthouseIndex = options.includeLighthouse ? 7 : -1;
-            const aeoIndex = options.includeLighthouse ? 8 : 7;
+            const lighthouseIndex = options.includeLighthouse ? 8 : -1;
+            const aeoIndex = options.includeLighthouse ? 9 : 8;
             
             if (options.includeLighthouse && results[lighthouseIndex]) {
                 auditResults.tests.lighthouse = results[lighthouseIndex].status === 'fulfilled' ? 
@@ -441,6 +443,11 @@ class OptimizedAuditOrchestrator {
                             timeout: options.timeout || 30000
                         };
                         const renderResult = await jsRenderer.renderPage(url, renderOptions);
+                        
+                        // Validate render result before processing
+                        if (!renderResult || !renderResult.html || typeof renderResult.html !== 'string') {
+                            throw new Error(`Invalid render result: ${renderResult ? 'missing or invalid HTML' : 'null result'}`);
+                        }
                         
                         // Re-analyze with rendered content
                         const cheerio = require('cheerio');
@@ -828,8 +835,132 @@ class OptimizedAuditOrchestrator {
         }
     }
 
-    // Basic accessibility check using cheerio
-    async checkBasicAccessibility(url, options = {}) {
+    // Enhanced accessibility check using axe-core
+    async checkAxeAccessibility(url, options = {}) {
+        try {
+            // Lazy load puppeteer and axe-core
+            if (!this.puppeteer) {
+                this.puppeteer = await this.loadPuppeteer();
+            }
+
+            const browser = await this.puppeteer.launch({
+                headless: 'new',
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--no-first-run',
+                    '--disable-extensions'
+                ]
+            });
+
+            try {
+                const page = await browser.newPage();
+                await page.setViewport({ width: 1200, height: 800 });
+                
+                // Navigate to page with timeout
+                await page.goto(url, { 
+                    waitUntil: 'domcontentloaded', 
+                    timeout: 15000 
+                });
+
+                // Wait for content to render
+                await page.waitForTimeout(2000);
+
+                // Inject and run axe-core
+                const { AxePuppeteer } = require('@axe-core/puppeteer');
+                const axe = new AxePuppeteer(page);
+                
+                // Configure axe-core for comprehensive testing
+                const results = await axe
+                    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice'])
+                    .analyze();
+
+                // Process axe-core results
+                const issues = [];
+                const violations = results.violations || [];
+                
+                violations.forEach(violation => {
+                    issues.push({
+                        id: violation.id,
+                        impact: violation.impact,
+                        description: violation.description,
+                        help: violation.help,
+                        helpUrl: violation.helpUrl,
+                        tags: violation.tags,
+                        nodes: violation.nodes.length
+                    });
+                });
+
+                // Calculate enhanced accessibility metrics
+                const totalChecks = (results.passes?.length || 0) + violations.length;
+                const passRate = totalChecks > 0 ? Math.round((results.passes?.length || 0) / totalChecks * 100) : 100;
+                
+                // Impact-based scoring
+                const impactWeights = { critical: 25, serious: 15, moderate: 8, minor: 3 };
+                const totalPenalty = violations.reduce((penalty, violation) => {
+                    return penalty + (impactWeights[violation.impact] || 5) * violation.nodes.length;
+                }, 0);
+                
+                const axeScore = Math.max(0, 100 - Math.min(totalPenalty, 100));
+
+                // Also get basic metrics for compatibility
+                const $ = require('cheerio').load(await page.content());
+                const imagesWithoutAlt = $('img:not([alt])').length;
+                const totalImages = $('img').length;
+
+                await page.close();
+
+                return {
+                    // Axe-core specific data
+                    axeResults: {
+                        violations: violations.map(v => ({
+                            id: v.id,
+                            impact: v.impact,
+                            description: v.description,
+                            help: v.help,
+                            nodes: v.nodes.length
+                        })),
+                        passes: results.passes?.length || 0,
+                        incomplete: results.incomplete?.length || 0,
+                        inapplicable: results.inapplicable?.length || 0,
+                        passRate: passRate,
+                        totalChecks: totalChecks
+                    },
+                    // Legacy compatibility
+                    issues: violations.map(v => `${v.description} (${v.nodes.length} instances)`),
+                    score: axeScore,
+                    imagesWithoutAlt,
+                    totalImages,
+                    hasLang: !!$('html').attr('lang'),
+                    lang: $('html').attr('lang') || null,
+                    heuristics: {
+                        images: {
+                            percentage: totalImages > 0 ? Math.round((imagesWithoutAlt / totalImages) * 100) : 0,
+                            withoutAlt: imagesWithoutAlt
+                        },
+                        headings: {
+                            h1Count: $('h1').length
+                        },
+                        links: {
+                            empty: $('a[href=""], a:not([href])').length
+                        },
+                        lang: $('html').attr('lang') || null
+                    }
+                };
+            } finally {
+                await browser.close();
+            }
+        } catch (error) {
+            // Fallback to basic accessibility check
+            logger.warn(`Axe-core failed, falling back to basic check: ${error.message}`);
+            return this.checkBasicAccessibilityFallback(url, options);
+        }
+    }
+
+    // Fallback basic accessibility check using cheerio
+    async checkBasicAccessibilityFallback(url, options = {}) {
         const fetch = require('node-fetch');
         const cheerio = require('cheerio');
 
@@ -875,7 +1006,7 @@ class OptimizedAuditOrchestrator {
                 totalImages: $('img').length,
                 hasLang: !!$('html').attr('lang'),
                 lang: $('html').attr('lang') || null,
-                // Frontend-compatible structure
+                fallback: true,
                 heuristics: {
                     images: {
                         percentage: $('img').length > 0 ? Math.round(($('img:not([alt])').length / $('img').length) * 100) : 0,
@@ -893,6 +1024,105 @@ class OptimizedAuditOrchestrator {
         } catch (error) {
             throw new Error(`Accessibility check failed: ${error.message}`);
         }
+    }
+
+    // Check PageSpeed Insights for CrUX field data
+    async checkPSIMetrics(url, options = {}) {
+        try {
+            const { PageSpeedInsights } = require('./pagespeed-insights');
+            const psi = new PageSpeedInsights();
+            
+            if (!psi.enabled) {
+                return {
+                    enabled: false,
+                    message: 'PSI disabled - set USE_PSI_METRICS=true to enable'
+                };
+            }
+
+            const insights = await psi.getInsights(url, {
+                strategy: 'mobile',
+                categories: 'performance'
+            });
+
+            if (!insights) {
+                return {
+                    enabled: true,
+                    available: false,
+                    message: 'No PSI data available'
+                };
+            }
+
+            // Extract Core Web Vitals from CrUX field data
+            const fieldData = insights.originLoadingExperience || insights.loadingExperience;
+            const coreWebVitals = {};
+
+            if (fieldData && fieldData.metrics) {
+                // Map PSI field data to our format
+                const metrics = fieldData.metrics;
+                
+                if (metrics.FIRST_CONTENTFUL_PAINT_MS) {
+                    const fcp = metrics.FIRST_CONTENTFUL_PAINT_MS;
+                    coreWebVitals.fcp = fcp.category || this.categorizeFCP(fcp.percentile);
+                }
+                
+                if (metrics.LARGEST_CONTENTFUL_PAINT_MS) {
+                    const lcp = metrics.LARGEST_CONTENTFUL_PAINT_MS;
+                    coreWebVitals.lcp = lcp.category || this.categorizeLCP(lcp.percentile);
+                }
+                
+                if (metrics.CUMULATIVE_LAYOUT_SHIFT_SCORE) {
+                    const cls = metrics.CUMULATIVE_LAYOUT_SHIFT_SCORE;
+                    coreWebVitals.cls = cls.category || this.categorizeCLS(cls.percentile);
+                }
+                
+                if (metrics.FIRST_INPUT_DELAY_MS) {
+                    const fid = metrics.FIRST_INPUT_DELAY_MS;
+                    coreWebVitals.fid = fid.category || this.categorizeFID(fid.percentile);
+                }
+            }
+
+            return {
+                url: insights.id,
+                timestamp: new Date().toISOString(),
+                cached: insights.cached || false,
+                performance: {
+                    score: insights.lighthouseResult?.categories?.performance?.score || 0,
+                    coreWebVitals,
+                    metrics: {
+                        fcp: fieldData?.metrics?.FIRST_CONTENTFUL_PAINT_MS?.percentile + 'ms' || 'N/A',
+                        lcp: fieldData?.metrics?.LARGEST_CONTENTFUL_PAINT_MS?.percentile + 'ms' || 'N/A',
+                        fid: fieldData?.metrics?.FIRST_INPUT_DELAY_MS?.percentile + 'ms' || 'N/A',
+                        cls: fieldData?.metrics?.CUMULATIVE_LAYOUT_SHIFT_SCORE?.percentile || 'N/A'
+                    }
+                },
+                fieldData: fieldData ? true : false,
+                source: 'google-psi-crux'
+            };
+
+        } catch (error) {
+            logger.warn(`PSI check failed: ${error.message}`);
+            return {
+                error: error.message,
+                available: false
+            };
+        }
+    }
+
+    // Helper methods to categorize Core Web Vitals
+    categorizeFCP(ms) {
+        return ms <= 1800 ? 'good' : ms <= 3000 ? 'needs-improvement' : 'poor';
+    }
+    
+    categorizeLCP(ms) {
+        return ms <= 2500 ? 'good' : ms <= 4000 ? 'needs-improvement' : 'poor';
+    }
+    
+    categorizeCLS(score) {
+        return score <= 0.1 ? 'good' : score <= 0.25 ? 'needs-improvement' : 'poor';
+    }
+    
+    categorizeFID(ms) {
+        return ms <= 100 ? 'good' : ms <= 300 ? 'needs-improvement' : 'poor';
     }
 
     // Check for basic files (robots.txt, sitemap variants, etc.)
@@ -923,16 +1153,89 @@ class OptimizedAuditOrchestrator {
                 )
             );
 
-            // Find first successful sitemap
-            let sitemapResult = { exists: false, url: `${baseUrl}/sitemap.xml` };
+            // Find first successful sitemap with enhanced validation
+            let sitemapResult = { 
+                exists: false, 
+                url: `${baseUrl}/sitemap.xml`,
+                enhanced: {
+                    type: null,
+                    urlCount: 0,
+                    hasLastmod: false,
+                    isValidXML: false,
+                    httpsConsistent: true,
+                    errors: [],
+                    score: 0
+                }
+            };
+            
             for (let i = 0; i < sitemapChecks.length; i++) {
                 const check = sitemapChecks[i];
                 if (check.status === 'fulfilled' && check.value.ok) {
-                    sitemapResult = {
-                        exists: true,
-                        url: `${baseUrl}/${sitemapVariants[i]}`,
-                        variant: sitemapVariants[i]
-                    };
+                    sitemapResult.exists = true;
+                    sitemapResult.url = `${baseUrl}/${sitemapVariants[i]}`;
+                    sitemapResult.variant = sitemapVariants[i];
+                    
+                    // Enhanced XML validation
+                    try {
+                        const sitemapContent = await check.value.text();
+                        sitemapResult.enhanced.score += 40; // Base score for existence
+                        
+                        // Validate XML structure
+                        try {
+                            const xml2js = require('xml2js');
+                            const parser = new xml2js.Parser();
+                            const parsed = await parser.parseStringPromise(sitemapContent);
+                            sitemapResult.enhanced.isValidXML = true;
+                            sitemapResult.enhanced.score += 20;
+                            
+                            // Analyze sitemap structure
+                            if (parsed.urlset) {
+                                sitemapResult.enhanced.type = 'urlset';
+                                const urls = parsed.urlset.url || [];
+                                sitemapResult.enhanced.urlCount = Array.isArray(urls) ? urls.length : 0;
+                                
+                                // Check for lastmod dates
+                                const lastmodEntries = urls.filter(u => u.lastmod && u.lastmod[0]);
+                                if (lastmodEntries.length > 0) {
+                                    sitemapResult.enhanced.hasLastmod = true;
+                                    sitemapResult.enhanced.score += 15;
+                                }
+                                
+                                // URL count validation
+                                if (sitemapResult.enhanced.urlCount > 0) {
+                                    sitemapResult.enhanced.score += 15;
+                                    if (sitemapResult.enhanced.urlCount > 50000) {
+                                        sitemapResult.enhanced.errors.push('Over 50,000 URLs - consider sitemap index');
+                                    }
+                                } else {
+                                    sitemapResult.enhanced.errors.push('Sitemap contains no URLs');
+                                }
+                                
+                            } else if (parsed.sitemapindex) {
+                                sitemapResult.enhanced.type = 'index';
+                                const sitemaps = parsed.sitemapindex.sitemap || [];
+                                sitemapResult.enhanced.urlCount = Array.isArray(sitemaps) ? sitemaps.length : 0;
+                                sitemapResult.enhanced.score += 10; // Bonus for using sitemap index
+                            }
+
+                            // Check HTTPS consistency
+                            if (sitemapContent.includes('http://') && url.startsWith('https://')) {
+                                sitemapResult.enhanced.httpsConsistent = false;
+                                sitemapResult.enhanced.errors.push('Contains HTTP URLs on HTTPS site');
+                                sitemapResult.enhanced.score -= 15;
+                            }
+
+                        } catch (parseError) {
+                            sitemapResult.enhanced.errors.push('Invalid XML format');
+                            sitemapResult.enhanced.score -= 25;
+                        }
+                        
+                    } catch (contentError) {
+                        sitemapResult.enhanced.errors.push('Failed to read sitemap content');
+                    }
+                    
+                    // Clamp score
+                    sitemapResult.enhanced.score = Math.max(0, Math.min(100, sitemapResult.enhanced.score));
                     break;
                 }
             }
@@ -1031,10 +1334,57 @@ class OptimizedAuditOrchestrator {
             if (title.length > 60) issues.push('Title tag too long (>60 chars)');
             // Removed: Google doesn't enforce strict meta description length limits
 
+            // Enhanced canonical tag analysis
+            const canonicalElement = $('link[rel="canonical"]');
+            const canonicalAnalysis = {
+                url: canonicalElement.attr('href') || '',
+                present: canonicalElement.length > 0,
+                count: canonicalElement.length,
+                isValid: false,
+                isSelfReferencing: false,
+                issues: []
+            };
+
+            if (canonicalAnalysis.present) {
+                if (canonicalAnalysis.count > 1) {
+                    canonicalAnalysis.issues.push(`${canonicalAnalysis.count} canonical tags found - should be only one`);
+                    issues.push(`Multiple canonical tags (${canonicalAnalysis.count})`);
+                }
+
+                if (canonicalAnalysis.url) {
+                    try {
+                        const canonicalUrlObj = new URL(canonicalAnalysis.url, url);
+                        canonicalAnalysis.isValid = true;
+                        
+                        // Check if self-referencing
+                        const normalizedCurrent = url.replace(/\/$/, '').toLowerCase();
+                        const normalizedCanonical = canonicalUrlObj.href.replace(/\/$/, '').toLowerCase();
+                        canonicalAnalysis.isSelfReferencing = normalizedCurrent === normalizedCanonical;
+                        
+                        // Check protocol consistency
+                        const currentUrlObj = new URL(url);
+                        if (canonicalUrlObj.protocol !== currentUrlObj.protocol) {
+                            canonicalAnalysis.issues.push('Canonical protocol differs from page protocol');
+                            issues.push('Canonical protocol mismatch');
+                        }
+                        
+                    } catch (urlError) {
+                        canonicalAnalysis.issues.push('Invalid canonical URL format');
+                        issues.push('Invalid canonical URL');
+                    }
+                } else {
+                    canonicalAnalysis.issues.push('Empty canonical URL');
+                    issues.push('Empty canonical tag');
+                }
+            } else {
+                issues.push('Missing canonical tag');
+            }
+
             return {
                 title,
                 description,
-                canonical: $('link[rel="canonical"]').attr('href') || '',
+                canonical: canonicalAnalysis.url,
+                canonicalAnalysis,
                 viewport: $('meta[name="viewport"]').attr('content') || '',
                 robots: $('meta[name="robots"]').attr('content') || '',
                 issues,
@@ -1245,13 +1595,61 @@ class OptimizedAuditOrchestrator {
             }
         }
 
-        // Default fallback
+        // Default fallback - Use URL analysis for better detection
+        const urlAnalysis = this.analyzeURLForBusinessType(url);
+        if (urlAnalysis.confidence > 0.3) {
+            return urlAnalysis;
+        }
+
+        // True fallback - be honest about low confidence
         return {
             type: 'WebPage',
-            confidence: 'low',
+            confidence: 0, // 0% confidence when we truly don't know
             method: 'default',
             detected: 'General Website'
         };
+    }
+
+    // Analyze URL for business type indicators (better than generic fallback)
+    analyzeURLForBusinessType(url) {
+        const urlLower = url.toLowerCase();
+        const domain = new URL(url).hostname.toLowerCase();
+        
+        // E-commerce indicators
+        if (urlLower.includes('/shop') || urlLower.includes('/store') || urlLower.includes('/product') || 
+            urlLower.includes('/cart') || domain.includes('shop') || domain.includes('store')) {
+            return {
+                type: 'Product',
+                confidence: 0.6,
+                method: 'url-analysis',
+                detected: 'E-commerce/Product'
+            };
+        }
+        
+        // SaaS/Software indicators
+        if (urlLower.includes('/app') || urlLower.includes('/dashboard') || urlLower.includes('/api') ||
+            urlLower.includes('/docs') || domain.includes('app') || domain.includes('api')) {
+            return {
+                type: 'SoftwareApplication',
+                confidence: 0.5,
+                method: 'url-analysis',
+                detected: 'SaaS/Software'
+            };
+        }
+        
+        // Organization indicators
+        if (urlLower.includes('/about') || urlLower.includes('/team') || urlLower.includes('/company') ||
+            domain.includes('corp') || domain.includes('inc') || domain.includes('org')) {
+            return {
+                type: 'Organization',
+                confidence: 0.4,
+                method: 'url-analysis',
+                detected: 'Organization'
+            };
+        }
+        
+        // Low confidence, don't use
+        return { confidence: 0 };
     }
 
     // Analyze schema fields present vs required for business type

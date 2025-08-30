@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Database, FileText, Globe, Search, Zap, Eye, Code, Server, Download, Copy } from 'lucide-react';
+import { ChevronDown, ChevronRight, Database, FileText, Globe, Search, Zap, Eye, Code, Server, Download, Copy, Shield } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { AuditResult } from '@/types/audit';
@@ -212,6 +212,13 @@ export function ComprehensiveDataSection({ results }: ComprehensiveDataSectionPr
       icon: Code,
       data: results.tests.schema,
       available: !!results.tests.schema
+    },
+    {
+      key: 'schema-validation',
+      title: 'Schema Content Validation',
+      icon: Shield,
+      data: results.tests.schema?.contentValidation,
+      available: !!results.tests.schema?.contentValidation
     },
     {
       key: 'files',

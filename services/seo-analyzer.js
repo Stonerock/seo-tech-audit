@@ -192,7 +192,187 @@ class SEOAnalyzer {
       results.llms = { exists: false };
     }
     
+    // Enhanced sitemap and canonical analysis will be called separately with DOM access
+
     return results;
+  }
+
+  /**
+   * Enhanced XML sitemap validation and canonical tag analysis
+   * @param {string} url - Base URL
+   * @param {Object} $ - Cheerio DOM object
+   * @returns {Object} - Comprehensive sitemap and canonical analysis
+   */
+  async analyzeSitemapAndCanonical(url, $) {
+    const urlObj = new URL(url);
+    const analysis = {
+      sitemap: {
+        found: false,
+        url: null,
+        type: null,
+        urlCount: 0,
+        lastmod: null,
+        errors: [],
+        recommendations: [],
+        score: 0
+      },
+      canonical: {
+        present: false,
+        url: null,
+        isCorrect: false,
+        issues: [],
+        recommendations: [],
+        score: 0
+      },
+      overallScore: 0,
+      criticalIssues: []
+    };
+
+    // 1. Enhanced Sitemap Analysis
+    const sitemapVariants = [
+      'sitemap.xml',
+      'sitemap_index.xml',
+      'sitemap-index.xml',
+      'sitemaps.xml',
+      'sitemap1.xml'
+    ];
+
+    for (const variant of sitemapVariants) {
+      try {
+        const sitemapUrl = `${urlObj.origin}/${variant}`;
+        const response = await fetchWithTimeout(sitemapUrl, 8000);
+        
+        if (response.ok) {
+          analysis.sitemap.found = true;
+          analysis.sitemap.url = sitemapUrl;
+          analysis.sitemap.score += 40;
+
+          const sitemapContent = await response.text();
+          
+          // Validate XML structure
+          try {
+            const xml2js = require('xml2js');
+            const parser = new xml2js.Parser();
+            const parsed = await parser.parseStringPromise(sitemapContent);
+            
+            // Check sitemap type and structure
+            if (parsed.urlset) {
+              analysis.sitemap.type = 'urlset';
+              const urls = parsed.urlset.url || [];
+              analysis.sitemap.urlCount = Array.isArray(urls) ? urls.length : 0;
+              
+              // Check for lastmod dates
+              const lastmodEntries = urls.filter(u => u.lastmod && u.lastmod[0]);
+              if (lastmodEntries.length > 0) {
+                analysis.sitemap.lastmod = lastmodEntries[0].lastmod[0];
+                analysis.sitemap.score += 10;
+              }
+              
+            } else if (parsed.sitemapindex) {
+              analysis.sitemap.type = 'index';
+              const sitemaps = parsed.sitemapindex.sitemap || [];
+              analysis.sitemap.urlCount = Array.isArray(sitemaps) ? sitemaps.length : 0;
+              analysis.sitemap.score += 15; // Index sitemaps are good practice
+            }
+
+            // Validate sitemap best practices
+            if (analysis.sitemap.urlCount > 50000) {
+              analysis.sitemap.recommendations.push('Consider using sitemap index - over 50,000 URLs detected');
+            }
+
+            if (analysis.sitemap.urlCount > 0) {
+              analysis.sitemap.score += 20;
+            } else {
+              analysis.sitemap.errors.push('Sitemap exists but contains no URLs');
+            }
+
+            // Check for HTTPS consistency
+            if (sitemapContent.includes('http://') && urlObj.protocol === 'https:') {
+              analysis.sitemap.errors.push('Sitemap contains HTTP URLs on HTTPS site');
+              analysis.sitemap.score -= 10;
+            }
+
+          } catch (parseError) {
+            analysis.sitemap.errors.push('Invalid XML format in sitemap');
+            analysis.sitemap.score -= 20;
+          }
+          
+          break; // Found working sitemap, stop checking variants
+        }
+      } catch (error) {
+        // Continue checking other variants
+      }
+    }
+
+    if (!analysis.sitemap.found) {
+      analysis.sitemap.errors.push('No sitemap.xml found');
+      analysis.criticalIssues.push('Missing XML sitemap - search engines may not discover all content');
+    }
+
+    // 2. Enhanced Canonical Tag Analysis
+    const canonicalElement = $('link[rel="canonical"]');
+    
+    if (canonicalElement.length > 0) {
+      analysis.canonical.present = true;
+      analysis.canonical.url = canonicalElement.attr('href');
+      analysis.canonical.score += 30;
+
+      // Validate canonical URL
+      if (analysis.canonical.url) {
+        try {
+          const canonicalUrlObj = new URL(analysis.canonical.url, url);
+          
+          // Check if canonical is absolute
+          if (analysis.canonical.url.startsWith('http')) {
+            analysis.canonical.score += 20;
+          } else {
+            analysis.canonical.recommendations.push('Use absolute URLs for canonical tags');
+          }
+
+          // Check if canonical points to current page (self-referencing)
+          const normalizedCurrent = url.replace(/\/$/, '').toLowerCase();
+          const normalizedCanonical = canonicalUrlObj.href.replace(/\/$/, '').toLowerCase();
+          
+          if (normalizedCurrent === normalizedCanonical) {
+            analysis.canonical.isCorrect = true;
+            analysis.canonical.score += 30;
+          } else {
+            analysis.canonical.issues.push('Canonical URL differs from current page URL');
+            analysis.canonical.score -= 10;
+          }
+
+          // Check for HTTPS consistency
+          if (canonicalUrlObj.protocol !== urlObj.protocol) {
+            analysis.canonical.issues.push('Canonical URL protocol differs from page protocol');
+            analysis.canonical.score -= 15;
+          }
+
+        } catch (urlError) {
+          analysis.canonical.issues.push('Invalid canonical URL format');
+          analysis.canonical.score -= 20;
+        }
+      }
+
+      // Check for multiple canonical tags
+      if (canonicalElement.length > 1) {
+        analysis.canonical.issues.push(`${canonicalElement.length} canonical tags found - should be only one`);
+        analysis.canonical.score -= 25;
+      }
+
+    } else {
+      analysis.canonical.issues.push('Missing canonical tag');
+      analysis.criticalIssues.push('Missing canonical tag - may cause duplicate content issues');
+    }
+
+    // Calculate overall score
+    analysis.overallScore = Math.round((analysis.sitemap.score + analysis.canonical.score) / 2);
+    
+    // Clamp scores
+    analysis.sitemap.score = Math.max(0, Math.min(100, analysis.sitemap.score));
+    analysis.canonical.score = Math.max(0, Math.min(100, analysis.canonical.score));
+    analysis.overallScore = Math.max(0, Math.min(100, analysis.overallScore));
+
+    return analysis;
   }
 
   /**

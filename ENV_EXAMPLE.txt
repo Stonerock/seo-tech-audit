@@ -1,9 +1,133 @@
-Server
+# ========================================
+# SEO Audit Tool - Production Environment Configuration
+# ========================================
+
+# Server Configuration
 PORT=3001
+NODE_ENV=production
 
-Google PageSpeed Insights (optional)
-PSI_API_KEY=
+# ========================================
+# External Service APIs
+# ========================================
 
-WebPageTest (optional)
-WPT_API_KEY=
+# Browserless.io Configuration (required for JS rendering)
+BROWSERLESS_WS=wss://production-sfo.browserless.io
+BROWSERLESS_TOKEN=your-browserless-token-here
+
+# Google PageSpeed Insights API (optional but recommended)
+PSI_API_KEY=your-pagespeed-insights-api-key
+USE_PSI_METRICS=true
+
+# WebPageTest API (legacy - optional)
+WPT_API_KEY=your-webpagetest-api-key
 WPT_LOCATION=eu-west-1
+
+# ========================================
+# Google Cloud Platform Services
+# ========================================
+
+# Project Configuration
+GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+
+# Pub/Sub Configuration (async job processing)
+PUBSUB_TOPIC=audit-jobs
+PUBSUB_SUBSCRIPTION=audit-jobs-worker
+PUBSUB_TOKEN=your-secure-pubsub-token
+
+# Google Cloud Storage (for screenshots, HAR files, traces)
+GCS_BUCKET=your-artifacts-bucket-name
+ENABLE_SCREENSHOT=true
+
+# ========================================
+# Security & Compliance
+# ========================================
+
+# Security Hardening
+ENABLE_SECURITY_HARDENING=true
+RESPECT_ROBOTS_TXT=true
+ROBOTS_OVERRIDE=false
+
+# Rate Limiting & Reliability
+ENABLE_RELIABILITY_PATTERNS=true
+AUDIT_IDEMPOTENCY_WINDOW_MS=300000
+
+# ========================================
+# Monitoring & Observability
+# ========================================
+
+# OpenTelemetry Tracing
+ENABLE_TRACING=true
+SERVICE_NAME=seo-audit-backend
+SERVICE_VERSION=2.1.0
+
+# ========================================
+# Webhooks & Notifications
+# ========================================
+
+# Webhook Configuration
+ENABLE_WEBHOOKS=true
+WEBHOOK_SECRET=your-webhook-signing-secret
+WEBHOOK_DEFAULT_ENDPOINT=https://your-api.com/webhooks/seo-audit
+
+# Client-specific webhook endpoints (optional)
+# WEBHOOK_ENDPOINT_client1=https://client1.com/webhooks/seo
+# WEBHOOK_ENDPOINT_client2=https://client2.com/webhooks/seo
+
+# Webhook retry configuration
+WEBHOOK_RETRY_ATTEMPTS=3
+WEBHOOK_TIMEOUT_MS=10000
+
+# ========================================
+# Analytics & Data Collection
+# ========================================
+
+# Firestore for analytics and job storage
+ENABLE_FIRESTORE_ANALYTICS=true
+
+# ========================================
+# Development & Testing Options
+# ========================================
+
+# Local Playwright (fallback for development)
+ENABLE_LOCAL_PLAYWRIGHT=false
+
+# Enable debugging features
+DEBUG_MODE=false
+ENABLE_PROBE_ENDPOINTS=true
+
+# ========================================
+# Performance Tuning
+# ========================================
+
+# Cache configuration
+PAGESPEED_CACHE_WINDOW_MS=86400000
+
+# Circuit breaker thresholds
+BROWSERLESS_FAILURE_THRESHOLD=5
+BROWSERLESS_RECOVERY_TIMEOUT_MS=30000
+
+# ========================================
+# Secret Manager Integration
+# ========================================
+# When using Google Cloud Secret Manager, these secrets will be loaded:
+# - browserless-token
+# - pagespeed-api-key  
+# - webhook-secret
+# - pubsub-token
+#
+# Environment variables serve as fallbacks if Secret Manager is unavailable
+
+# ========================================
+# Setup Instructions
+# ========================================
+# 
+# 1. Copy this file to .env
+# 2. Replace all placeholder values with your actual credentials
+# 3. Run: npm run setup-pubsub (sets up Google Cloud Pub/Sub)
+# 4. Ensure your GCP service account has the following roles:
+#    - Cloud Run Invoker
+#    - Pub/Sub Editor
+#    - Storage Admin
+#    - Secret Manager Secret Accessor
+#    - Firestore User
+# 5. Test with: npm run dev

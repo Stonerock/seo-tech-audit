@@ -351,6 +351,11 @@ export function BatchAuditSection({ onBatchComplete }: BatchAuditSectionProps) {
                               <>
                                 <div>SEO: {result.scores.seo}</div>
                                 <div>Perf: {result.scores.performance}</div>
+                                {result.psiMetrics?.performance && (
+                                  <div className={`font-medium ${getScoreColor(result.psiMetrics.performance.score)}`}>
+                                    PSI: {result.psiMetrics.performance.score}
+                                  </div>
+                                )}
                                 <div>A11y: {result.scores.accessibility}</div>
                               </>
                             )}

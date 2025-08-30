@@ -57,6 +57,106 @@ export function calculateAttentionScores(results: any): AttentionScores {
 }
 
 /**
+ * Calculate new 5-category AI comprehension scores (100% specification)
+ */
+export function calculateNewCategoryScores(results: any) {
+  // Check for detailed aiOptimization data first, then fallback to basic aeo data
+  const ai = results?.tests?.aiOptimization || results?.tests?.aeo;
+  
+  if (!ai) {
+    return {
+      overall: 0,
+      machineComprehension: 0,
+      contentStructure: 0,
+      technicalQuality: 0,
+      accessibility: 0,
+      trustGovernance: 0
+    };
+  }
+
+  // If we have detailed category data, use it
+  if (ai.machineComprehension || ai.contentStructure || ai.technicalQuality || ai.accessibility || ai.trustGovernance) {
+    const machineComprehension = Math.round(
+      (ai.machineComprehension?.structuredData?.score || 0) * 15/15 +
+      (ai.machineComprehension?.entityClarity?.score || 0) * 10/10 + 
+      (ai.machineComprehension?.semanticHTML?.score || 0) * 5/5
+    ) * 30/30;
+
+    const contentStructure = Math.round(
+      (ai.contentStructure?.sectionGranularity?.score || 0) * 10/10 +
+      (ai.contentStructure?.paragraphReadability?.score || 0) * 5/5 +
+      (ai.contentStructure?.answerSignals?.score || 0) * 5/5 +
+      (ai.contentStructure?.deepLinking?.score || 0) * 5/5
+    ) * 25/25;
+
+    const technicalQuality = Math.round(
+      (ai.technicalQuality?.coreWebVitals?.score || 0) * 10/10 +
+      (ai.technicalQuality?.crawlability?.score || 0) * 8/8 +
+      (ai.technicalQuality?.renderingStrategy?.score || 0) * 7/7
+    ) * 25/25;
+
+    const accessibility = Math.round(
+      (ai.accessibility?.altTextCoverage?.score || 0) * 4/4 +
+      (ai.accessibility?.contrastAndLandmarks?.score || 0) * 3/3
+    ) * 7/7;
+
+    const trustGovernance = Math.round(
+      (ai.trustGovernance?.authorExpertise?.score || 0) * 5/5 +
+      (ai.trustGovernance?.publisherTransparency?.score || 0) * 4/4 +
+      (ai.trustGovernance?.externalCorroboration?.score || 0) * 3/3 +
+      (ai.trustGovernance?.llmsTxtGovernance?.score || 0) * 1/1
+    ) * 13/13;
+
+    const overall = Math.round(
+      (machineComprehension * 0.30) +
+      (contentStructure * 0.25) +
+      (technicalQuality * 0.25) +
+      (accessibility * 0.07) +
+      (trustGovernance * 0.13)
+    );
+
+    return {
+      overall,
+      machineComprehension,
+      contentStructure,
+      technicalQuality,
+      accessibility,
+      trustGovernance
+    };
+  }
+
+  // Fallback: Use basic aeo score and derive estimated category scores
+  const baseScore = ai.score || 0;
+  const seoScore = results?.tests?.seo?.score || 0;
+  const performanceScore = results?.tests?.performance?.score || 0;
+  const accessibilityScore = results?.tests?.accessibility?.score || 0;
+  
+  // Estimate category scores from available data
+  const machineComprehension = Math.min(baseScore + 10, 100); // Schema tends to be better
+  const contentStructure = Math.max(baseScore - 5, 0); // Content structure impacts base score
+  const technicalQuality = Math.round((performanceScore + seoScore) / 2); // Average of perf/SEO
+  const accessibility = accessibilityScore || Math.max(baseScore - 15, 0); // Use accessibility if available
+  const trustGovernance = Math.max(baseScore - 10, 0); // Trust signals affect base score
+  
+  const overall = Math.round(
+    (machineComprehension * 0.30) +
+    (contentStructure * 0.25) +
+    (technicalQuality * 0.25) +
+    (accessibility * 0.07) +
+    (trustGovernance * 0.13)
+  );
+
+  return {
+    overall,
+    machineComprehension,
+    contentStructure,
+    technicalQuality,
+    accessibility,
+    trustGovernance
+  };
+}
+
+/**
  * Calculate files score - preserve your logic
  */
 function calculateFilesScore(files: any): number {

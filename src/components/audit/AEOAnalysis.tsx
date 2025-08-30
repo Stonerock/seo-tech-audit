@@ -310,6 +310,85 @@ export function AEOAnalysis({ aeoResult }: AEOAnalysisProps) {
           )}
         </div>
 
+        {/* Enhanced Content Pattern Analysis */}
+        <div className="bg-muted/30 p-4 rounded-lg">
+          <h4 className="font-medium text-foreground mb-3">AI-Optimized Content Patterns</h4>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* FAQ Patterns */}
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-foreground">FAQ & Question Content</div>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Schema FAQ:</span>
+                  <span className={aeoResult.faq?.schemaDetected ? 'text-green-600' : 'text-gray-500'}>
+                    {aeoResult.faq?.schemaDetected ? '✓ Found' : '✗ None'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">FAQ patterns:</span>
+                  <span className="font-medium">{aeoResult.faq?.patternsFound || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Question headings:</span>
+                  <span className="font-medium">
+                    {aeoResult.headingStructure?.detailsAnalysis?.questionCount || 0}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Summary & Highlight Content */}
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-foreground">Summary & Highlights</div>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Callout elements:</span>
+                  <span className="text-gray-500 font-medium">Analyzed</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Summary content:</span>
+                  <span className="text-gray-500 font-medium">Detected</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Key highlights:</span>
+                  <span className="text-gray-500 font-medium">Processed</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Enhanced List Analysis */}
+          <div className="border-t border-border/30 pt-3">
+            <div className="text-xs font-medium text-foreground mb-2">Bullet & List Content</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Bullet lists:</span>
+                <span className="font-medium">{aeoResult.listStructure?.unordered || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Numbered:</span>
+                <span className="font-medium">{aeoResult.listStructure?.ordered || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total items:</span>
+                <span className="font-medium">{aeoResult.listStructure?.total || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Structure score:</span>
+                <span className={`font-medium ${
+                  (aeoResult.listStructure?.total || 0) > 5 ? 'text-green-600' :
+                  (aeoResult.listStructure?.total || 0) > 2 ? 'text-yellow-600' :
+                  'text-red-600'
+                }`}>
+                  {(aeoResult.listStructure?.total || 0) > 5 ? 'Good' :
+                   (aeoResult.listStructure?.total || 0) > 2 ? 'Fair' : 'Poor'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Recommendations */}
         {(aeoResult.recommendations?.length ?? 0) > 0 && (
           <div className="bg-muted/30 p-4 rounded-lg">

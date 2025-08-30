@@ -1,0 +1,25 @@
+# Production Dockerfile for Cloud Run with Browserless v2
+FROM node:20-slim
+
+WORKDIR /app
+
+# Copy package files and install production dependencies
+COPY package*.json ./
+ENV NODE_ENV=production
+RUN npm ci --only=production --no-audit --no-fund && npm cache clean --force
+
+# Ensure CommonJS runtime even if repo has "type": "module"
+RUN sed -i '/"type"\s*:\s*"module"/d' package.json || true
+
+# Copy application code
+COPY . .
+# Ensure CommonJS runtime if repo package.json declares ESM
+RUN sed -i '/"type"\s*:\s*"module"/d' package.json || true
+
+# Runtime environment
+ENV PORT=8080
+ENV ENABLE_LOCAL_PLAYWRIGHT=0
+
+EXPOSE 8080
+
+CMD ["node", "server.js"]

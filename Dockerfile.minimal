@@ -1,0 +1,29 @@
+# Minimal working Dockerfile - Authentication fix only
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package.json but remove "type": "module" to avoid ES module issues
+COPY package*.json ./
+RUN sed -i '/"type": "module",/d' package.json
+
+# Install deps
+RUN npm install --only=production
+
+# Copy application files
+COPY . .
+
+# Remove problematic files that cause ES module conflicts
+RUN rm -f browserless-auth-patch.* Dockerfile.* deploy-*.sh .gcloudignore
+
+# Make sure server.js uses CommonJS
+RUN sed -i 's/import dotenv from '\''dotenv'\'';/const dotenv = require('\''dotenv'\'');/' server.js
+RUN sed -i 's/import express from '\''express'\'';/const express = require('\''express'\'');/' server.js
+RUN sed -i 's/import cors from '\''cors'\'';/const cors = require('\''cors'\'');/' server.js
+RUN sed -i 's/export default app;/module.exports = app;/' server.js
+
+EXPOSE 8080
+
+USER node
+
+CMD ["node", "server.js"]

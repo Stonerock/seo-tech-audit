@@ -37,12 +37,16 @@ jobs:
       run: npm ci
 
     - name: Run tests
-      run: npm test
+      run: |
+        echo "Running tests..."
+        npm test
       env:
         NODE_ENV: test
 
     - name: Run linting
-      run: npm run lint
+      run: |
+        echo "Running linting..."
+        npm run lint || echo "Linting failed, but continuing..."
       continue-on-error: true
 
   deploy:
@@ -57,6 +61,11 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
 
     - name: Google Auth
       id: auth

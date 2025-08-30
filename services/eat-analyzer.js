@@ -201,11 +201,11 @@ class EATAnalyzer {
             seenAuthors.add(metaAuthor.toLowerCase());
         }
 
-        // 3. Byline patterns (medium confidence)
+        // 3. Byline patterns (medium confidence) - STRICT validation to prevent hallucination
         const bylinePatterns = [
-            /by\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/gi,
-            /author:\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/gi,
-            /written\s+by\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/gi
+            /by\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/gi,  // Max 3 words
+            /author:\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/gi,
+            /written\s+by\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/gi
         ];
 
         const pageText = $('body').text();
@@ -213,7 +213,9 @@ class EATAnalyzer {
             let match;
             while ((match = pattern.exec(pageText)) !== null) {
                 const authorName = match[1].trim();
-                if (!seenAuthors.has(authorName.toLowerCase())) {
+                
+                // STRICT VALIDATION: Only accept realistic author names
+                if (this.isValidAuthorName(authorName) && !seenAuthors.has(authorName.toLowerCase())) {
                     authors.push({
                         name: authorName,
                         source: 'byline',
@@ -225,7 +227,42 @@ class EATAnalyzer {
             }
         });
 
-        return authors.slice(0, 5); // Limit to top 5 authors
+        // Filter out low confidence authors (prevent showing unreliable data)
+        const validAuthors = authors.filter(author => author.confidence >= 0.5);
+        return validAuthors.slice(0, 3); // Limit to top 3 valid authors
+    }
+
+    /**
+     * Validate if a string is a realistic author name (prevent hallucination)
+     */
+    isValidAuthorName(name) {
+        if (!name || typeof name !== 'string') return false;
+        
+        // Basic length check
+        if (name.length < 4 || name.length > 50) return false;
+        
+        // Must contain only letters, spaces, periods, hyphens
+        if (!/^[A-Za-z\s\.\-]+$/.test(name)) return false;
+        
+        // Must have 2-3 words max (First Last, First Middle Last)
+        const words = name.trim().split(/\s+/);
+        if (words.length < 2 || words.length > 3) return false;
+        
+        // Each word must be at least 2 characters
+        if (words.some(word => word.length < 2)) return false;
+        
+        // Blacklist generic phrases that aren't author names
+        const blacklist = [
+            'working with', 'many companies', 'organizations', 'millions of', 
+            'people every', 'every day', 'companies and', 'and organizations',
+            'with many', 'of people', 'the platform', 'independent people',
+            'all you', 'you need', 'need to', 'to know', 'more information'
+        ];
+        
+        const lowerName = name.toLowerCase();
+        if (blacklist.some(phrase => lowerName.includes(phrase))) return false;
+        
+        return true;
     }
 
     /**

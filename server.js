@@ -1,7 +1,8 @@
 // server.optimized.js - Fast-starting SEO Audit Backend
 // Optimized for cloud deployment with lazy loading
 
-require('dotenv').config();
+const dotenv = require('dotenv');
+dotenv.config();
 
 // Define missing globals for Node.js environment compatibility
 if (typeof File === 'undefined') {
@@ -67,7 +68,7 @@ if (typeof File === 'undefined') {
 
 const express = require('express');
 const cors = require('cors');
-// const rateLimit = require('express-rate-limit'); // Disabled for debugging
+const { getServiceManager } = require('./services/service-manager');
 
 // Basic logging without heavy winston dependencies
 const log = {
@@ -79,6 +80,36 @@ const log = {
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 8080;
+
+// Initialize service manager
+let serviceManager = null;
+let services = null;
+
+const initializeServices = async () => {
+    if (!services) {
+        serviceManager = getServiceManager();
+        services = await serviceManager.initializeServices();
+        log.info('Production services initialized');
+    }
+    return services;
+};
+let jobStore;
+try {
+    const { FirestoreJobStore } = require('./services/job-store.firestore');
+    jobStore = new FirestoreJobStore();
+    log.info('Using FirestoreJobStore');
+} catch (e) {
+    const { InMemoryJobStore } = require('./services/job-store');
+    jobStore = new InMemoryJobStore();
+    log.warn('Falling back to InMemoryJobStore:', e.message);
+}
+let jobQueue = null;
+try {
+    const { JobQueue } = require('./services/pubsub');
+    jobQueue = new JobQueue();
+} catch (e) {
+    log.warn('Pub/Sub not available:', e.message);
+}
 
 // CORS middleware - allow all origins for now to fix the issue
 app.use(cors({
@@ -104,10 +135,57 @@ app.use(cors({
 app.use(express.json({ limit: '2mb' })); // Reduced from 10mb
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
+// Initialize services middleware
+app.use(async (req, res, next) => {
+    try {
+        req.services = await initializeServices();
+        next();
+    } catch (error) {
+        log.error('Service initialization failed:', error);
+        next(error);
+    }
+});
+
 // Serve static files
 app.use(express.static('.', {
     index: false // Don't automatically serve index.html for all routes
 }));
+// Simple health
+app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+// Probe routes
+try {
+    app.use('/probe', require('./routes/probe'));
+} catch (e) {
+    log.warn('Probe routes not available:', e.message);
+}
+
+// Analytics routes for product insights
+try {
+    app.use('/api/analytics', require('./routes/analytics'));
+} catch (e) {
+    log.warn('Analytics routes not available:', e.message);
+}
+
+// Apply production middleware after services are initialized
+app.use(async (req, res, next) => {
+    try {
+        const services = await initializeServices();
+        const middleware = serviceManager.getMiddleware();
+        
+        // Apply telemetry tracing
+        middleware.tracing(req, res, () => {
+            // Apply security validation for audit endpoints
+            if (req.path.startsWith('/api/audit')) {
+                middleware.security(req, res, next);
+            } else {
+                next();
+            }
+        });
+    } catch (error) {
+        log.error('Middleware initialization failed:', error);
+        next();
+    }
+});
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -124,17 +202,27 @@ app.use((req, res, next) => {
 
 // Lazy-loaded orchestrator
 let orchestrator = null;
-const getOrchestrator = () => {
+const getOrchestrator = async () => {
     if (!orchestrator) {
-        const OptimizedAuditOrchestrator = require('./services/audit-orchestrator.optimized');
+        const OptimizedAuditOrchestrator = require('./services/audit-orchestrator.optimized.js');
         orchestrator = new OptimizedAuditOrchestrator();
         log.info('Audit orchestrator loaded');
     }
     return orchestrator;
 };
 
-// Health check endpoint (no dependencies needed)
+// Comprehensive health check endpoint with all services
 app.get('/api/health', async (req, res) => {
+    try {
+        const services = await initializeServices();
+        const healthStatus = await serviceManager.getHealthStatus();
+        return res.json(healthStatus);
+    } catch (error) {
+        log.error('Health check failed:', error);
+        // Fallback to basic health check
+    }
+    
+    // Basic health check fallback
     const health = {
         status: 'ok',
         timestamp: new Date().toISOString(),
@@ -150,20 +238,18 @@ app.get('/api/health', async (req, res) => {
         }
     };
 
-    // Check JavaScript rendering capability
+    // Lightweight JS rendering config status (no external calls)
     try {
-        const jsRenderer = await getOrchestrator().loadJSRenderer();
+        const orchestratorInstance = await getOrchestrator();
+        const jsRenderer = await orchestratorInstance.loadJSRenderer();
         if (jsRenderer) {
-            const jsHealth = await jsRenderer.healthCheck();
+            const hasToken = !!process.env.BROWSERLESS_TOKEN;
             health.features.jsRendering = {
-                status: jsHealth.status,
-                mode: jsHealth.mode,
-                available: jsHealth.status === 'healthy'
+                status: hasToken ? 'configured' : 'disabled',
+                mode: hasToken ? 'browserless' : (process.env.ENABLE_LOCAL_PLAYWRIGHT === '1' ? 'playwright' : 'none'),
+                available: hasToken || process.env.ENABLE_LOCAL_PLAYWRIGHT === '1',
+                probe: '/probe/browserless'
             };
-            if (jsHealth.mode === 'browserless') {
-                health.features.jsRendering.provider = 'browserless.io';
-                health.features.jsRendering.hasToken = jsHealth.hasToken;
-            }
         } else {
             health.features.jsRendering = {
                 status: 'unavailable',
@@ -180,6 +266,124 @@ app.get('/api/health', async (req, res) => {
     }
 
     res.json(health);
+});
+
+// Service-specific health endpoints
+app.get('/api/health/circuit-breakers', async (req, res) => {
+    try {
+        const services = await initializeServices();
+        const circuitHealth = services.reliability.getCircuitBreakerHealth();
+        res.json(circuitHealth);
+    } catch (error) {
+        res.status(500).json({ error: 'Circuit breaker health unavailable', message: error.message });
+    }
+});
+
+app.get('/api/health/security', async (req, res) => {
+    try {
+        const services = await initializeServices();
+        const securityHealth = services.security.getSecurityHealth();
+        res.json(securityHealth);
+    } catch (error) {
+        res.status(500).json({ error: 'Security health unavailable', message: error.message });
+    }
+});
+
+// HTTP connectivity probe endpoint
+app.get('/probe/http', async (req, res) => {
+    const startTime = Date.now();
+    const target = req.query.target || 'https://chrome.browserless.io';
+    
+    try {
+        const fetch = require('node-fetch');
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+        
+        console.log(`[PROBE] Testing HTTP connectivity to ${target}`);
+        
+        const response = await fetch(target, {
+            method: 'HEAD',
+            signal: controller.signal,
+            headers: {
+                'User-Agent': 'SEO-Audit-Tool-Probe/2.1.0'
+            }
+        });
+        
+        clearTimeout(timeout);
+        const latency = Date.now() - startTime;
+        
+        const result = {
+            target,
+            status: response.status,
+            statusText: response.statusText,
+            latency: `${latency}ms`,
+            headers: Object.fromEntries(response.headers.entries()),
+            connectivity: response.status < 400 ? 'ok' : 'error',
+            timestamp: new Date().toISOString()
+        };
+        
+        console.log(`[PROBE] Result:`, { status: result.status, latency: result.latency, connectivity: result.connectivity });
+        
+        res.json(result);
+        
+    } catch (error) {
+        const latency = Date.now() - startTime;
+        
+        const result = {
+            target,
+            error: error.message,
+            code: error.code,
+            latency: `${latency}ms`,
+            connectivity: 'failed',
+            timestamp: new Date().toISOString()
+        };
+        
+        console.error(`[PROBE] Failed:`, result);
+        
+        res.status(503).json(result);
+    }
+});
+
+// Pub/Sub push worker endpoint
+app.post('/worker/pubsub', async (req, res) => {
+    try {
+        const token = process.env.PUBSUB_TOKEN;
+        if (token) {
+            const provided = req.query.token || req.header('x-pubsub-token') || (req.header('authorization') || '').replace(/^Bearer\s+/i, '');
+            if (provided !== token) {
+                return res.status(401).json({ error: 'unauthorized' });
+            }
+        }
+
+        const msg = req.body && req.body.message ? req.body.message : req.body;
+        if (!msg) {
+            return res.status(400).json({ error: 'missing message' });
+        }
+
+        let payload = null;
+        if (msg.data) {
+            const decoded = Buffer.from(msg.data, 'base64').toString('utf8');
+            payload = JSON.parse(decoded);
+        } else {
+            payload = msg;
+        }
+
+        const { jobId, url, options = {} } = payload || {};
+        if (!url) {
+            return res.status(400).json({ error: 'missing url' });
+        }
+
+        // Mark running and execute audit
+        await jobStore.updateJob(jobId || `job-${Date.now()}`, { status: 'running', startedAt: Date.now(), url, options });
+        const orchestratorInstance = await getOrchestrator();
+        const result = await orchestratorInstance.performTwoPassAudit(url, { ...options, enableJS: true });
+        await jobStore.saveResult(jobId || `job-${Date.now()}`, result);
+
+        return res.status(204).end();
+    } catch (err) {
+        log.error('Worker execution failed:', err.message);
+        return res.status(500).json({ error: 'worker-failed', message: err.message });
+    }
 });
 
 // Input validation middleware
@@ -257,37 +461,66 @@ const validateAuditInput = (req, res, next) => {
     next();
 };
 
-// Main audit endpoint with timeout protection
+// Rate limiting middleware for audit endpoints
+app.use('/api/audit', async (req, res, next) => {
+    try {
+        const services = await initializeServices();
+        const middleware = serviceManager.getMiddleware();
+        
+        // Apply audit-specific rate limiting
+        middleware.audit(req, res, next);
+    } catch (error) {
+        log.warn('Rate limiting unavailable:', error.message);
+        next();
+    }
+});
+
+// Main audit endpoint with enhanced production services
 app.post('/api/audit', validateAuditInput, async (req, res) => {
     const { url, options = {} } = req.body;
-
+    const jobId = `audit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const startTime = Date.now();
-    const timeoutMs = 45000; // 45 second timeout
+    const timeoutMs = 60000; // 60 second timeout for intelligent audit
     
     try {
-        log.info(`Starting audit for: ${url}`);
+        log.info(`Starting enhanced audit for: ${url}`);
         
-        // Race between audit and timeout
-        const auditPromise = getOrchestrator().performLightweightAudit(url, options);
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Audit timeout')), timeoutMs)
-        );
+        const services = await initializeServices();
         
-        const result = await Promise.race([auditPromise, timeoutPromise]);
+        // Use enhanced audit with all production services
+        const result = await serviceManager.performEnhancedAudit(jobId, url, {
+            ...options,
+            enableJS: options.enableJS !== false,
+            includePSI: options.includePSI !== false,
+            clientId: req.get('x-client-id') || 'default'
+        });
         
-        log.info(`Audit completed in ${Date.now() - startTime}ms`);
+        log.info(`Enhanced audit completed in ${Date.now() - startTime}ms`);
         res.json(result);
         
     } catch (error) {
-        log.error(`Audit failed for ${url}:`, error.message);
+        log.error(`Enhanced audit failed for ${url}:`, error.message);
         
-        const executionTime = Date.now() - startTime;
-        res.status(500).json({
-            error: error.message === 'Audit timeout' ? 'Audit timed out' : 'Audit failed',
-            url,
-            executionTime,
-            timestamp: new Date().toISOString()
-        });
+        // Fallback to basic audit
+        try {
+            const orchestratorInstance = await getOrchestrator();
+            const fallback = await orchestratorInstance.performTwoPassAudit(url, options);
+            res.status(206).json({
+                ...fallback,
+                warning: 'Enhanced features unavailable, using basic audit',
+                error: error.message
+            });
+        } catch (fallbackError) {
+            const executionTime = Date.now() - startTime;
+            res.status(500).json({
+                error: 'Both enhanced and basic audits failed',
+                details: error.message,
+                fallbackError: fallbackError.message,
+                url,
+                executionTime,
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 });
 
@@ -301,15 +534,68 @@ app.post('/api/audit/enhanced', async (req, res) => {
 
     try {
         log.info(`Starting enhanced audit for: ${url}`);
-        const result = await getOrchestrator().performEnhancedAudit(url, options);
+        const orchestratorInstance = await getOrchestrator();
+        const result = await orchestratorInstance.performEnhancedAudit(url, options);
         res.json(result);
         
     } catch (error) {
         log.error(`Enhanced audit failed for ${url}:`, error.message);
         res.status(500).json({
             error: 'Enhanced audit failed, falling back to basic audit',
-            fallback: await getOrchestrator().performLightweightAudit(url, options)
+            fallback: await (await getOrchestrator()).performLightweightAudit(url, options)
         });
+    }
+});
+
+// Jobs API — control plane MVP (in-memory store for now)
+app.post('/api/audit/jobs', async (req, res) => {
+    try {
+        const { url, options = {}, force = false } = req.body || {};
+        if (!url || typeof url !== 'string') {
+            return res.status(400).json({ error: 'URL is required' });
+        }
+        const idempotencyWindowMs = force ? 0 : 10 * 60 * 1000;
+        let jobId, reused;
+        try {
+            ({ jobId, reused } = await jobStore.createJob(url, options, idempotencyWindowMs));
+        } catch (e) {
+            // Firestore may be disabled; fallback to in-memory store seamlessly
+            log.warn('Primary job store failed, falling back to in-memory:', e.message);
+            const { InMemoryJobStore } = require('./services/job-store');
+            jobStore = new InMemoryJobStore();
+            ({ jobId, reused } = await jobStore.createJob(url, options, idempotencyWindowMs));
+        }
+        // Enqueue to Pub/Sub if available; otherwise run inline async
+        if (jobQueue && jobQueue.enabled) {
+            await jobQueue.publishJob({ jobId, url, options });
+        } else {
+            process.nextTick(async () => {
+                try {
+                    await jobStore.updateJob(jobId, { status: 'running', startedAt: Date.now() });
+                    const orchestratorInstance = await getOrchestrator();
+                    const result = await orchestratorInstance.performTwoPassAudit(url, { ...options, enableJS: true });
+                    await jobStore.saveResult(jobId, result);
+                } catch (err) {
+                    await jobStore.failJob(jobId, 'WORKER_ERROR', err?.message || 'Unknown');
+                }
+            });
+        }
+        return res.status(202).json({ jobId, reused, statusUrl: `/api/audit/jobs/${jobId}` });
+    } catch (error) {
+        log.error('Job create error:', error);
+        return res.status(500).json({ error: 'Failed to create job' });
+    }
+});
+
+app.get('/api/audit/jobs/:jobId', async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const data = await jobStore.getJob(jobId);
+        if (!data) return res.status(404).json({ error: 'Job not found' });
+        return res.json({ job: data.job, result: data.result });
+    } catch (error) {
+        log.error('Job status error:', error);
+        return res.status(500).json({ error: 'Failed to get job status' });
     }
 });
 
@@ -324,7 +610,8 @@ app.post('/api/audit/two-pass', validateAuditInput, async (req, res) => {
         log.info(`Starting two-pass audit for: ${url}`);
         
         // Race between audit and timeout
-        const auditPromise = getOrchestrator().performTwoPassAudit(url, { 
+        const orchestratorInstance = await getOrchestrator();
+        const auditPromise = orchestratorInstance.performTwoPassAudit(url, { 
             ...options, 
             enableJS: options.enableJS !== false // Default to true
         });
@@ -343,7 +630,7 @@ app.post('/api/audit/two-pass', validateAuditInput, async (req, res) => {
         // Fallback to lightweight audit
         try {
             log.info('Falling back to lightweight audit...');
-            const fallback = await getOrchestrator().performLightweightAudit(url, options);
+            const fallback = await (await getOrchestrator()).performLightweightAudit(url, options);
             res.status(500).json({
                 error: 'Two-pass audit failed, fallback to static analysis',
                 details: error.message,
@@ -378,8 +665,98 @@ app.post('/api/cache/clear', (req, res) => {
     });
 });
 
-// Enhanced batch audit limiter - disabled for debugging
-// const batchAuditLimiter = rateLimit({...});
+// Webhook management endpoints
+app.post('/api/webhooks/register', async (req, res) => {
+    try {
+        const services = await initializeServices();
+        const { clientId, endpoint } = req.body;
+        
+        if (!clientId || !endpoint) {
+            return res.status(400).json({ error: 'clientId and endpoint required' });
+        }
+        
+        services.webhooks.registerEndpoint(clientId, endpoint, { test: true });
+        res.json({ success: true, message: 'Webhook registered and tested' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to register webhook', message: error.message });
+    }
+});
+
+app.get('/api/webhooks/stats', async (req, res) => {
+    try {
+        const services = await initializeServices();
+        const stats = services.webhooks.getWebhookStats();
+        res.json(stats);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to get webhook stats', message: error.message });
+    }
+});
+
+// Cache management with service integration
+app.post('/api/cache/clear', async (req, res) => {
+    try {
+        const services = await initializeServices();
+        const results = {};
+        
+        // Clear application cache
+        const before = cache.size;
+        cache.clear();
+        results.application = { itemsCleared: before };
+        
+        // Clear PageSpeed Insights cache
+        if (services.pagespeed && services.pagespeed.enabled) {
+            const psiCleared = services.pagespeed.clearCache();
+            results.pagespeedInsights = { itemsCleared: psiCleared };
+        }
+        
+        // Force garbage collection if available
+        if (global.gc) {
+            global.gc();
+        }
+        
+        log.info('All caches cleared');
+        res.json({ 
+            status: 'cleared',
+            results,
+            memoryUsage: process.memoryUsage() 
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Cache clear failed', message: error.message });
+    }
+});
+
+// Artifacts management endpoints
+app.get('/api/artifacts/stats', async (req, res) => {
+    try {
+        const services = await initializeServices();
+        if (!services.artifacts || !services.artifacts.enabled) {
+            return res.status(503).json({ error: 'Artifacts storage not available' });
+        }
+        
+        const stats = await services.artifacts.getStorageStats();
+        res.json(stats);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to get artifacts stats', message: error.message });
+    }
+});
+
+app.post('/api/artifacts/cleanup', async (req, res) => {
+    try {
+        const services = await initializeServices();
+        const { daysOld = 30 } = req.body;
+        
+        if (!services.artifacts || !services.artifacts.enabled) {
+            return res.status(503).json({ error: 'Artifacts storage not available' });
+        }
+        
+        const deletedCount = await services.artifacts.cleanupOldArtifacts(daysOld);
+        res.json({ success: true, deletedFiles: deletedCount });
+    } catch (error) {
+        res.status(500).json({ error: 'Cleanup failed', message: error.message });
+    }
+});
+
+// Enhanced batch audit limiter - now using production rate limiting
 
 // Enhanced sitemap discovery and batch auditing
 app.post('/api/sitemap-audit', async (req, res) => {
@@ -397,9 +774,9 @@ app.post('/api/sitemap-audit', async (req, res) => {
     try {
         log.info(`Starting sitemap audit for: ${url} (mode: ${mode}, maxUrls: ${limitedMaxUrls})`);
 
-        const fetch = require('node-fetch');
-        const xml2js = require('xml2js');
-        const { URL } = require('url');
+        const fetch = (await import('node-fetch')).default;
+        const xml2js = (await import('xml2js')).default;
+        const { URL } = await import('url');
         
         const baseUrl = new URL(url).origin;
         const discoveredSitemaps = [];
@@ -532,7 +909,7 @@ app.post('/api/sitemap-audit', async (req, res) => {
 
             // Process URLs in smaller batches to avoid timeout
             const batchSize = 5;
-            const orchestrator = getOrchestrator();
+            const orchestrator = await getOrchestrator();
 
             for (let i = 0; i < urlArray.length; i += batchSize) {
                 const batch = urlArray.slice(i, i + batchSize);
@@ -745,9 +1122,18 @@ const server = app.listen(PORT, () => {
     log.info(`Health check: http://localhost:${PORT}/api/health`);
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
+// Graceful shutdown with service cleanup
+process.on('SIGTERM', async () => {
     log.info('SIGTERM received, shutting down gracefully');
+    
+    try {
+        if (serviceManager) {
+            await serviceManager.shutdown();
+        }
+    } catch (error) {
+        log.error('Service shutdown error:', error);
+    }
+    
     server.close(() => {
         log.info('Server closed');
         process.exit(0);

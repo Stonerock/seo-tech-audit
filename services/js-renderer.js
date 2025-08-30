@@ -4,19 +4,26 @@
 const { logger } = require('../utils/logger');
 const fetch = require('node-fetch');
 
-// Add Playwright import at the top
-const { chromium } = require('playwright-core');
+// Import Playwright conditionally
+let chromium = null;
+try {
+    const playwright = require('playwright-core');
+    chromium = playwright.chromium;
+} catch (error) {
+    logger.warn('Playwright not available, Browserless.io will be used for JS rendering');
+}
 
 class JavaScriptRenderer {
     constructor() {
         // Security: Build endpoint from separate env vars, never expose token to client
-        this.browserlessToken = process.env.BROWSERLESS_TOKEN || null;
-        this.browserlessBaseUrl = process.env.BROWSERLESS_URL || 'https://chrome.browserless.io'; // Configurable endpoint
+        this.browserlessToken = process.env.BROWSERLESS_TOKEN ? process.env.BROWSERLESS_TOKEN.trim() : null;
+        this.browserlessBaseUrl = process.env.BROWSERLESS_URL || 'https://production-sfo.browserless.io'; // Updated to new endpoint
         this.useBrowserless = !!this.browserlessToken; // Use Browserless if we have a token
         
-        // Local Playwright fallback
+        // Local Playwright fallback (disabled by default in production)
         this.browser = null;
         this.isInitialized = false;
+        this.enableLocalPlaywright = process.env.ENABLE_LOCAL_PLAYWRIGHT === '1';
         
         // Tuned timeouts for production stability
         this.maxPageAge = 30000; // 30 seconds max page lifetime
@@ -31,8 +38,10 @@ class JavaScriptRenderer {
         
         if (this.useBrowserless) {
             logger.info('Using Browserless.io for JavaScript rendering (production mode)');
-        } else {
+        } else if (this.enableLocalPlaywright) {
             logger.info('Using local Playwright for JavaScript rendering (development mode)');
+        } else {
+            logger.info('JavaScript rendering disabled (no Browserless token and local Playwright disabled)');
         }
     }
 
@@ -43,6 +52,10 @@ class JavaScriptRenderer {
 
         try {
             logger.info('Initializing lightweight headless browser...');
+            
+            if (!chromium) {
+                throw new Error('Playwright chromium not available');
+            }
             
             // Launch Chromium with optimized flags for serverless/lightweight usage
             this.browser = await chromium.launch({
@@ -100,8 +113,10 @@ class JavaScriptRenderer {
 
         if (this.useBrowserless) {
             return this.renderPageWithBrowserlessRetry(url, options);
-        } else {
+        } else if (this.enableLocalPlaywright) {
             return this.renderPageWithPlaywright(url, options);
+        } else {
+            throw new Error('JavaScript rendering not enabled');
         }
     }
 
@@ -171,50 +186,24 @@ class JavaScriptRenderer {
     }
 
     async runContentAnalysis(url, options = {}) {
+        // Minimal v2-compliant Browserless function - simplified for debugging
         const browserlessScript = `
-            async ({ page }) => {
-                // Set small viewport
-                await page.setViewportSize({ width: 1200, height: 800 });
-                
-                // Block resource-heavy content for faster content analysis
-                await page.route('**/*', (route) => {
-                    const resourceType = route.request().resourceType();
-                    const requestUrl = route.request().url();
+            export default async ({ page }) => {
+                try {
+                    // Basic page setup
+                    await page.setViewportSize({ width: 1200, height: 800 });
                     
-                    // Block images, fonts, media, stylesheets for content-only analysis
-                    if (['image', 'font', 'media', 'stylesheet'].includes(resourceType)) {
-                        return route.abort();
-                    }
+                    // Simple navigation - no route filtering initially
+                    console.log('Navigating to: ${url}');
+                    const response = await page.goto("${url}", {
+                        waitUntil: 'domcontentloaded',
+                        timeout: 15000
+                    });
                     
-                    // Block tracking URLs
-                    const trackingPatterns = [
-                        /google-analytics\\.com/,
-                        /googletagmanager\\.com/,
-                        /facebook\\.net/,
-                        /doubleclick\\.net/,
-                        /analytics/,
-                        /tracking/
-                    ];
-                    if (trackingPatterns.some(pattern => pattern.test(requestUrl))) {
-                        return route.abort();
-                    }
+                    console.log('Navigation response:', response.status());
                     
-                    // Allow document, xhr, fetch, script
-                    if (['document', 'xhr', 'fetch', 'script'].includes(resourceType)) {
-                        return route.continue();
-                    }
-                    
-                    route.abort();
-                });
-
-                // Navigate to page
-                const response = await page.goto("${url}", {
-                    waitUntil: 'domcontentloaded',
-                    timeout: 15000
-                });
-
-                // Wait for JS execution
-                await page.waitForTimeout(2000);
+                    // Wait for content to load
+                    await page.waitForTimeout(3000);
 
                 // Analyze JavaScript usage
                 const jsAnalysis = await page.evaluate(() => {
@@ -249,14 +238,25 @@ class JavaScriptRenderer {
                     }
                 }));
 
-                return {
-                    html: await page.content(),
-                    jsMetrics: jsAnalysis,
-                    metrics,
-                    status: response?.status() || 200,
-                    url: page.url(),
-                    analysisType: 'content'
-                };
+                    return {
+                        html: await page.content(),
+                        jsMetrics: jsAnalysis,
+                        metrics,
+                        status: response?.status() || 200,
+                        url: page.url(),
+                        analysisType: 'content'
+                    };
+                    
+                } catch (error) {
+                    console.error('Browserless function error:', error);
+                    return {
+                        error: error.message,
+                        html: '',
+                        jsMetrics: null,
+                        status: 500,
+                        analysisType: 'content'
+                    };
+                }
             }
         `;
 
@@ -266,33 +266,15 @@ class JavaScriptRenderer {
     async runLighthouseAnalysis(url, options = {}) {
         logger.info(`Running Lighthouse performance audit for: ${url}`);
         
-        // Use Browserless Lighthouse endpoint for comprehensive analysis
-        const lighthouseEndpoint = `${this.browserlessBaseUrl}/performance`;
+        // Use Browserless Lighthouse endpoint with query parameter authentication  
+        const lighthouseEndpoint = `${this.browserlessBaseUrl}/performance?token=${this.browserlessToken}`;
         const headers = {
             'Content-Type': 'application/json',
         };
 
-        if (this.browserlessToken) {
-            headers['Authorization'] = `Bearer ${this.browserlessToken}`;
-        }
-
+        // Simplified Lighthouse config for Browserless.io v2
         const lighthouseConfig = {
-            url: url,
-            options: {
-                onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
-                formFactor: options.mobile ? 'mobile' : 'desktop',
-                screenEmulation: {
-                    mobile: options.mobile || false,
-                    width: options.mobile ? 375 : 1200,
-                    height: options.mobile ? 667 : 800,
-                    deviceScaleFactor: options.mobile ? 2 : 1
-                },
-                throttling: {
-                    rttMs: options.throttling ? 150 : 0,
-                    throughputKbps: options.throttling ? 1638.4 : 0,
-                    cpuSlowdownMultiplier: options.throttling ? 4 : 1
-                }
-            }
+            url: url
         };
 
         const abortController = new AbortController();
@@ -328,24 +310,18 @@ class JavaScriptRenderer {
     }
 
     async executeBrowserlessScript(script) {
-        const browserlessScript = script;
+        try {
+            const browserlessScript = script;
 
-            // Security: Token in header, not query string (following DevOps best practices)
-            const browserlessEndpoint = `${this.browserlessBaseUrl}/function`;
+            // Use query parameter authentication (Browserless.io requirement)
+            const browserlessEndpoint = `${this.browserlessBaseUrl}/function?token=${this.browserlessToken}`;
             const headers = {
                 'Content-Type': 'application/json',
             };
 
-            // Add authorization if we have a token
-            if (this.browserlessToken) {
-                headers['Authorization'] = `Bearer ${this.browserlessToken}`;
-            }
-
+            // Browserless V2 API expects just the code string directly
             const requestBody = {
-                code: browserlessScript,
-                context: {
-                    timeout: this.requestTimeout
-                }
+                code: browserlessScript
             };
 
             // Create AbortController for timeout handling
@@ -362,15 +338,22 @@ class JavaScriptRenderer {
             clearTimeout(timeoutId);
 
             if (!response.ok) {
-                throw new Error(`Browserless API error: ${response.status} ${response.statusText}`);
+                // Log response body for debugging v2 API issues
+                const errorBody = await response.text();
+                console.error(`Browserless v2 API Error Response:`, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    body: errorBody,
+                    endpoint: browserlessEndpoint
+                });
+                throw new Error(`Browserless API error: ${response.status} ${response.statusText} - ${errorBody.substring(0, 200)}`);
             }
 
             const result = await response.json();
             logger.info('Browserless.io rendering completed successfully');
             return result;
-
         } catch (error) {
-            logger.error(`Browserless.io rendering failed for ${url}:`, error);
+            logger.error('Browserless.io rendering failed:', error);
             throw error;
         }
     }
@@ -563,27 +546,72 @@ class JavaScriptRenderer {
     }
 
     async healthCheckBrowserless() {
+        const healthInfo = {
+            mode: 'browserless',
+            endpoint: this.browserlessBaseUrl,
+            hasToken: !!this.browserlessToken,
+            tokenLength: this.browserlessToken ? this.browserlessToken.length : 0
+        };
+
         try {
-            // Use the correct endpoint for Browserless stats
-            const statsEndpoint = `${this.browserlessBaseUrl}/metrics`;
-            const response = await fetch(statsEndpoint, {
-                timeout: 5000,
-                headers: this.browserlessToken ? {
-                    'Authorization': `Bearer ${this.browserlessToken}`
-                } : {}
-            });
+            // Simple probe to validate Browserless connection
+            logger.info('Probing Browserless.io connection...');
+            const probe = `export default async ({ page }) => { 
+                await page.goto('data:text/html,<h1>Health Check</h1>');
+                return { 
+                    ok: true, 
+                    timestamp: new Date().toISOString(),
+                    userAgent: await page.evaluate(() => navigator.userAgent)
+                }; 
+            }`;
+            
+            const result = await this.executeBrowserlessScript(probe);
             
             return {
-                status: response.ok ? 'healthy' : 'degraded',
-                mode: 'browserless',
-                endpoint: this.browserlessBaseUrl,
-                hasToken: !!this.browserlessToken
+                ...healthInfo,
+                status: 'healthy',
+                probeResult: result,
+                lastChecked: new Date().toISOString()
             };
         } catch (error) {
+            logger.error('Browserless health check failed:', error);
+            
+            // Parse different error types
+            let errorType = 'unknown';
+            let errorDetails = error.message;
+            
+            if (error.message.includes('401')) {
+                errorType = 'authentication';
+                errorDetails = 'Invalid or expired Browserless token';
+            } else if (error.message.includes('403')) {
+                errorType = 'authorization';
+                errorDetails = 'Token valid but insufficient permissions';
+            } else if (error.message.includes('429')) {
+                errorType = 'rate_limit';
+                errorDetails = 'Rate limit exceeded - too many requests';
+            } else if (error.message.includes('timeout') || error.message.includes('ECONNRESET')) {
+                errorType = 'timeout';
+                errorDetails = 'Connection timeout to Browserless service';
+            } else if (error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
+                errorType = 'network';
+                errorDetails = 'Cannot reach Browserless service';
+            }
+            
             return {
-                status: 'unhealthy',
-                mode: 'browserless', 
-                error: error.message
+                ...healthInfo,
+                status: 'degraded',
+                error: {
+                    type: errorType,
+                    message: errorDetails,
+                    rawError: error.message,
+                    stack: error.stack?.split('\n').slice(0, 3).join('\n')
+                },
+                lastChecked: new Date().toISOString(),
+                troubleshooting: {
+                    checkToken: errorType === 'authentication',
+                    checkPlan: errorType === 'authorization' || errorType === 'rate_limit',
+                    checkNetwork: errorType === 'network' || errorType === 'timeout'
+                }
             };
         }
     }

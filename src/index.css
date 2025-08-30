@@ -30,6 +30,16 @@
     /* Academic paper typography */
     --font-sans: 'Libre Baskerville', 'Times New Roman', serif;
     --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+    
+    /* Golden Ditonic Scale (φ = 1.618034) */
+    --golden-ratio: 1.618034;
+    --scale-6xl: 4.236em;   /* φ³ for hero titles */
+    --scale-5xl: 2.618em;   /* φ² for main titles */
+    --scale-4xl: 1.618em;   /* φ for section headers */
+    --scale-3xl: 1.272em;   /* φ⁻¹ for subsections */
+    --scale-2xl: 1em;       /* Base unit for body text */
+    --scale-xl: 0.786em;    /* φ⁻² for captions */
+    --scale-lg: 0.618em;    /* φ⁻³ for fine print */
   }
 }
 
@@ -58,35 +68,71 @@
     background-color: #FCFCFD;
   }
 
-  /* Academic typography hierarchy */
+  /* Golden Ditonic Academic Typography Hierarchy */
   .academic-title {
-    @apply text-4xl md:text-6xl font-light tracking-tight text-foreground leading-tight;
+    font-size: var(--scale-5xl);  /* φ² = 2.618em - Hero title */
+    @apply font-light tracking-tight text-foreground leading-tight;
     font-variation-settings: 'wght' 300;
   }
   
   .academic-subtitle {
-    @apply text-xl md:text-2xl font-light text-muted-foreground leading-relaxed;
+    font-size: var(--scale-4xl);  /* φ = 1.618em - Main subtitle */
+    @apply font-light text-muted-foreground leading-relaxed;
   }
   
   .academic-section-title {
-    @apply text-2xl md:text-3xl font-medium text-foreground mb-6 border-b border-border pb-3;
+    font-size: var(--scale-3xl);  /* φ⁻¹ = 1.272em - Section headers */
+    @apply font-medium text-foreground mb-6 border-b border-border pb-3;
+    line-height: calc(var(--scale-3xl) * var(--golden-ratio)); /* Golden ratio line height */
   }
   
   .academic-subsection {
-    @apply text-lg font-medium text-foreground mb-4;
+    font-size: var(--scale-2xl);  /* 1em - Base body size for emphasis */
+    @apply font-medium text-foreground mb-4;
+    line-height: calc(var(--scale-2xl) * var(--golden-ratio));
   }
   
   .academic-body {
-    @apply text-base leading-7 text-muted-foreground;
+    font-size: var(--scale-2xl);  /* 1em - Primary reading size */
+    line-height: calc(var(--scale-2xl) * var(--golden-ratio)); /* φ line height for readability */
+    @apply text-muted-foreground;
   }
   
   .academic-caption {
-    @apply text-sm text-muted font-mono;
+    font-size: var(--scale-xl);   /* φ⁻² = 0.786em - Captions and meta */
+    @apply text-muted-foreground font-mono;
+    line-height: calc(var(--scale-xl) * var(--golden-ratio));
   }
   
   .academic-highlight {
     @apply text-foreground font-medium bg-primary/10 px-3 py-1 rounded-md;
   }
+
+  /* Golden Ratio Typography Utilities */
+  .text-golden-6xl { font-size: var(--scale-6xl); }  /* φ³ for hero displays */
+  .text-golden-5xl { font-size: var(--scale-5xl); }  /* φ² for main titles */
+  .text-golden-4xl { font-size: var(--scale-4xl); }  /* φ for sections */
+  .text-golden-3xl { font-size: var(--scale-3xl); }  /* φ⁻¹ for subsections */
+  .text-golden-2xl { font-size: var(--scale-2xl); }  /* 1em base text */
+  .text-golden-xl  { font-size: var(--scale-xl); }   /* φ⁻² for captions */
+  .text-golden-lg  { font-size: var(--scale-lg); }   /* φ⁻³ for fine print */
+  
+  /* Golden Ratio Line Heights */
+  .leading-golden {
+    line-height: var(--golden-ratio);  /* φ = 1.618 */
+  }
+  
+  .leading-golden-tight {
+    line-height: calc(var(--golden-ratio) * 0.618);  /* φ⁻¹ */
+  }
+  
+  /* Golden Ratio Spacing System */
+  .space-golden-sm { margin: calc(var(--scale-xl) * 1rem); }     /* φ⁻² spacing */
+  .space-golden-md { margin: calc(var(--scale-2xl) * 1rem); }    /* 1em spacing */
+  .space-golden-lg { margin: calc(var(--scale-4xl) * 1rem); }    /* φ spacing */
+  .space-golden-xl { margin: calc(var(--scale-5xl) * 1rem); }    /* φ² spacing */
+  
+  .gap-golden { gap: calc(var(--scale-4xl) * 1rem); }            /* φ gap for layouts */
 
   /* Research paper-inspired code styling */
   code {
@@ -116,7 +162,9 @@
   }
   
   .score-display {
-    @apply font-mono font-bold text-3xl text-primary;
+    font-size: var(--scale-5xl);  /* φ² = 2.618em for major scores */
+    line-height: var(--golden-ratio);
+    @apply font-mono font-bold text-primary;
   }
 
   /* Metric display - like research data */
@@ -126,12 +174,16 @@
   }
   
   .metric-value {
-    @apply text-3xl font-bold text-foreground;
+    font-size: var(--scale-4xl);  /* φ = 1.618em for emphasis */
+    line-height: var(--golden-ratio);
+    @apply font-bold text-foreground;
     font-variation-settings: 'wght' 700;
   }
   
   .metric-label {
-    @apply text-sm text-muted-foreground font-medium tracking-wide uppercase;
+    font-size: var(--scale-xl);  /* φ⁻² = 0.786em for subtlety */
+    line-height: var(--golden-ratio);
+    @apply text-muted-foreground font-medium tracking-wide uppercase;
   }
 
   /* Academic status indicators */

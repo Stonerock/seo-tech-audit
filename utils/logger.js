@@ -63,20 +63,20 @@ const consoleFormat = winston.format.combine(
  * Create logger configuration
  */
 function createLoggerConfig(options = {}) {
+  const isCloudRun = !!process.env.K_SERVICE || !!process.env.K_REVISION || !!process.env.GOOGLE_CLOUD_PROJECT;
   const {
     logLevel = process.env.LOG_LEVEL || 'info',
-    logDir = process.env.LOG_DIR || 'logs',
+    // Default to /tmp on Cloud Run; otherwise use project root 'logs'
+    logDir: providedLogDir,
     enableConsole = process.env.NODE_ENV !== 'test',
-    enableFile = true,
+    // Disable file logs by default, can be enabled with ENABLE_FILE_LOGS=1
+    enableFile: providedEnableFile,
     maxFiles = '14d',
     maxSize = '20m'
   } = options;
 
-  // Ensure log directory exists
-  const fs = require('fs');
-  if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir, { recursive: true });
-  }
+  const logDir = providedLogDir || process.env.LOG_DIR || (isCloudRun ? '/tmp/logs' : 'logs');
+  const enableFile = typeof providedEnableFile === 'boolean' ? providedEnableFile : process.env.ENABLE_FILE_LOGS === '1';
 
   const transports = [];
 
@@ -92,8 +92,33 @@ function createLoggerConfig(options = {}) {
     );
   }
 
-  // File transports
+  // File transports (only when explicitly enabled)
   if (enableFile) {
+    // Ensure log directory exists lazily and safely
+    try {
+      const fs = require('fs');
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+      }
+    } catch (e) {
+      // Fall back to console-only if directory cannot be created
+      // eslint-disable-next-line no-console
+      console.warn('[logger] Failed to prepare log directory, disabling file logs:', e.message);
+      return {
+        levels: LOG_LEVELS,
+        level: logLevel,
+        transports: [
+          new winston.transports.Console({
+            level: logLevel,
+            format: consoleFormat,
+            handleExceptions: true,
+            handleRejections: true
+          })
+        ],
+        exitOnError: false
+      };
+    }
+
     // General application logs with rotation
     transports.push(
       new DailyRotateFile({

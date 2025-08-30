@@ -1,0 +1,46 @@
+FROM --platform=linux/amd64 node:18-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# AGGRESSIVE ES MODULE CLEANUP
+RUN echo "Removing all ES module configurations..." && \
+    sed -i '/"type":/d' package.json && \
+    sed -i '/"module":/d' package.json && \
+    echo "ES module cleanup complete"
+
+# Install production dependencies
+RUN npm ci --only=production --silent
+
+# Copy application code
+COPY . .
+
+# COMPREHENSIVE ES MODULE CLEANUP IN CONTAINER
+RUN echo "Container-level ES module cleanup..." && \
+    find . -name "package.json" -exec sed -i '/"type":/d' {} \; && \
+    find . -name "*.mjs" -exec mv {} {}.backup \; 2>/dev/null || true && \
+    echo "Converting ES imports to CommonJS..." && \
+    sed -i 's/^import \(.*\) from \x27\([^"]*\)\x27;$/const \1 = require(\x27\2\x27);/' server.js && \
+    sed -i 's/^import \(.*\) from "\([^"]*\)";$/const \1 = require("\2");/' server.js && \
+    sed -i 's/^export default /module.exports = /' server.js && \
+    echo "All ES module references removed"
+
+# Clean up deployment artifacts
+RUN rm -f Dockerfile.* deploy-*.sh *.backup .gcloudignore minimal-*.sh
+
+# Verify no ES module conflicts remain in app code (exclude node_modules)
+RUN echo "Verifying clean CommonJS environment..." && \
+    if find . -name node_modules -prune -o -type f \( -name "*.json" -o -name "*.js" \) -exec grep -l '"type".*"module"' {} \; | grep -v node_modules; then echo "ERROR: ES modules found in app code"; exit 1; fi && \
+    echo "✅ Clean CommonJS environment confirmed"
+
+# Expose port
+EXPOSE 8080
+
+# Health check with curl (pre-installed in alpine)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/health || exit 1
+
+# Start application
+CMD ["node", "server.js"]

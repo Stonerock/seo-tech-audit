@@ -47,11 +47,15 @@ gcloud services enable run.googleapis.com
 gcloud services enable containerregistry.googleapis.com
 gcloud services enable cloudbuild.googleapis.com
 
-# Build and deploy
-echo -e "${YELLOW}🔨 Building and deploying to Cloud Run${NC}"
-gcloud run deploy $SERVICE_NAME \
-    --source . \
-    --region=$REGION \
+IMAGE_NAME="gcr.io/$PROJECT_ID/$SERVICE_NAME:latest"
+
+echo -e "${YELLOW}🔨 Building container image with Dockerfile${NC}"
+gcloud builds submit --tag "$IMAGE_NAME"
+
+echo -e "${YELLOW}🚢 Deploying image to Cloud Run${NC}"
+gcloud run deploy "$SERVICE_NAME" \
+    --image "$IMAGE_NAME" \
+    --region="$REGION" \
     --allow-unauthenticated \
     --port=8080 \
     --memory=1Gi \

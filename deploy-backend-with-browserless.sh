@@ -5,8 +5,8 @@
 set -e
 
 # Configuration
-PROJECT_ID="your-project-id"
-SERVICE_NAME="seo-audit-backend"
+PROJECT_ID="seo-audit-tool-prod"
+SERVICE_NAME="seo-audit-service"
 REGION="us-central1"
 SECRET_NAME="browserless-token"
 

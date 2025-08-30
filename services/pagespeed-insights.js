@@ -5,16 +5,40 @@ const crypto = require('crypto');
 class PageSpeedInsights {
   constructor(options = {}) {
     this.enabled = process.env.USE_PSI_METRICS === 'true';
-    this.apiKey = process.env.PAGESPEED_API_KEY; // Optional, but recommended for higher quotas
+    this.apiKey = null; // Will be loaded securely from Google Secret Manager
     this.cache = new Map(); // In-memory cache (could be Redis in production)
     this.cacheWindow = options.cacheWindowMs || 24 * 60 * 60 * 1000; // 24 hours
     this.baseUrl = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed';
+    this.secretsManager = null;
     
     if (this.enabled) {
-      console.log(`[PSI] Enabled${this.apiKey ? ' with API key' : ' (no API key - rate limited)'}`);
+      console.log('[PSI] Enabled - loading API key from Secret Manager');
     } else {
       console.log('[PSI] Disabled - set USE_PSI_METRICS=true to enable');
     }
+  }
+
+  /**
+   * Initialize and get API key from Google Secret Manager
+   */
+  async initializeApiKey() {
+    if (!this.secretsManager) {
+      const { secretsManager } = require('../utils/secrets');
+      this.secretsManager = secretsManager;
+    }
+
+    if (!this.apiKey) {
+      try {
+        this.apiKey = await this.secretsManager.getPageSpeedApiKey();
+        console.log(`[PSI] API key loaded${this.apiKey ? ' successfully' : ' - using rate limited access'}`);
+      } catch (error) {
+        console.warn(`[PSI] Failed to load API key: ${error.message}`);
+        // Fallback to environment variable for local development
+        this.apiKey = process.env.PAGESPEED_API_KEY;
+      }
+    }
+    
+    return this.apiKey;
   }
 
   /**
@@ -24,6 +48,9 @@ class PageSpeedInsights {
     if (!this.enabled) return null;
 
     try {
+      // Initialize API key from Secret Manager
+      await this.initializeApiKey();
+      
       const cacheKey = this.getCacheKey(url, options);
       
       // Check cache first

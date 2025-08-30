@@ -1,0 +1,55 @@
+# MVP Speed Optimization - Ignore unnecessary files
+
+# Development files
+node_modules/
+.git/
+.gitignore
+.env*
+.vscode/
+.idea/
+
+# Build artifacts  
+dist/
+build/
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+logs/
+
+# Test files
+test/
+tests/
+__tests__/
+*.test.js
+*.spec.js
+jest.config.js
+.eslintrc*
+.prettierrc*
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Frontend files (not needed for backend)
+src/
+public/
+index.html
+vite.config.ts
+tsconfig.json
+tailwind.config.js
+postcss.config.js
+
+# Development scripts
+deploy-*.sh
+
+# Temporary files
+.DS_Store
+Thumbs.db
+.tmp
+.cache
+
+# Docker files we don't need
+Dockerfile.fast

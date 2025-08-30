@@ -1,7 +1,9 @@
-import { TrendingUp, Zap, Eye, FileText, Search, Code } from 'lucide-react';
+import { TrendingUp, Zap, Eye, Brain, BookOpen, Users, Info, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { calculateAttentionScores, getScoreStatus, getWittyCopy } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { calculateNewCategoryScores, getScoreStatus } from '@/lib/utils';
+import { useState } from 'react';
 import type { AuditResult } from '@/types/audit';
 
 interface AttentionCardsProps {
@@ -9,55 +11,176 @@ interface AttentionCardsProps {
 }
 
 export function AttentionCards({ results }: AttentionCardsProps) {
-  const scores = calculateAttentionScores(results);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const scores = calculateNewCategoryScores(results);
 
   const cards = [
     {
-      title: 'SEO Foundation',
-      score: scores.seo,
-      icon: Search,
-      description: 'Search engine optimization compliance and best practices',
+      title: 'Machine Comprehension',
+      subtitle: '(30%)',
+      score: scores.machineComprehension,
+      icon: Brain,
+      description: 'Can AI actually understand your site? — we check schema, entities, headings, and alt text.',
       gradient: 'from-blue-500/10 to-blue-600/10',
       borderColor: 'border-blue-500/20',
+      priority: 'Strategic',
     },
     {
-      title: 'Performance Metrics',
-      score: scores.performance,
-      icon: Zap,
-      description: 'Loading speed, resource efficiency, and Core Web Vitals',
+      title: 'Content Structure & Answerability',
+      subtitle: '(25%)',
+      score: scores.contentStructure,
+      icon: BookOpen,
+      description: 'Is your content chunkable and answer-ready? — we measure section sizes, Q&A headings, and lists.',
       gradient: 'from-emerald-500/10 to-emerald-600/10',
       borderColor: 'border-emerald-500/20',
+      priority: 'Quick Win',
     },
     {
-      title: 'Accessibility Standards',
+      title: 'Technical Quality',
+      subtitle: '(25%)',
+      score: scores.technicalQuality,
+      icon: Zap,
+      description: 'Fast, crawlable, visible — Core Web Vitals, robots/sitemap, and content without JS walls.',
+      gradient: 'from-orange-500/10 to-orange-600/10',
+      borderColor: 'border-orange-500/20',
+      priority: 'Quick Win',
+    },
+    {
+      title: 'Accessibility & Inclusivity',
+      subtitle: '(7%)',
       score: scores.accessibility,
       icon: Eye,
-      description: 'WCAG compliance and inclusive design principles',
+      description: 'Alt text, contrast, and landmarks — signals that help both humans and machines read your site.',
       gradient: 'from-purple-500/10 to-purple-600/10',
       borderColor: 'border-purple-500/20',
+      priority: 'Quick Win',
     },
     {
-      title: 'Schema Markup',
-      score: scores.schema,
-      icon: Code,
-      description: 'Structured data for AI-powered search comprehension',
+      title: 'Trust, Transparency & Governance',
+      subtitle: '(13%)',
+      score: scores.trustGovernance,
+      icon: Users,
+      description: 'Who\'s behind the content? — author bios, publisher details, corroboration, and llms.txt governance.',
       gradient: 'from-indigo-500/10 to-indigo-600/10',
       borderColor: 'border-indigo-500/20',
+      priority: 'Strategic',
     },
   ];
 
+  const InfoModal = () => (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-background rounded-lg max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold">ℹ️ How we evaluate your site</h2>
+            <Button variant="ghost" size="sm" onClick={() => setShowInfoModal(false)}>
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+          
+          <div className="space-y-6 text-sm">
+            <div>
+              <p className="text-muted-foreground mb-4">
+                <strong>Attention may be all you need in AI…</strong><br/>
+                but for websites, AI engines also need structure, speed, and trust.
+              </p>
+              <p className="text-muted-foreground">
+                Our audit looks at five big levers that make your site easier for AI systems (Google AI Overviews, ChatGPT, Gemini, Bing Copilot, etc.) to understand, chunk, and cite.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-4">🔎 What we measure</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium text-blue-600">🧠 Machine Comprehension (30%)</h4>
+                  <p className="text-muted-foreground mt-1">Can machines actually understand your site? We check schema markup (Organization, Product, FAQ), entity links (LinkedIn, Wikidata, Crunchbase), semantic HTML, and alt text.</p>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium text-emerald-600">📚 Content Structure & Answerability (25%)</h4>
+                  <p className="text-muted-foreground mt-1">Can your content be snapped into answers? We measure section sizes, paragraph readability, Q&A-style headings, lists/tables, and deep-link anchors.</p>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium text-orange-600">⚡ Technical Quality (25%)</h4>
+                  <p className="text-muted-foreground mt-1">Does your site load fast and render clearly? We look at Core Web Vitals (LCP, INP, CLS), crawlability (robots.txt + sitemap), and whether key content shows up without JavaScript.</p>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium text-purple-600">♿ Accessibility & Inclusivity (7%)</h4>
+                  <p className="text-muted-foreground mt-1">Alt text, color contrast, ARIA landmarks — signals that help both humans and machines parse your content.</p>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium text-indigo-600">🤝 Trust, Transparency & Governance (13%)</h4>
+                  <p className="text-muted-foreground mt-1">Who's behind your content? We check for author bios, publisher details, external corroboration, and whether you declare AI access in llms.txt.</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-4">⚖️ How the score works</h3>
+              <ul className="space-y-2 text-muted-foreground">
+                <li>• Each category has a fixed weight (in % above).</li>
+                <li>• Each metric is scored from evidence (e.g. tokens per section, % of images with alt text).</li>
+                <li>• The overall score (0–100) is a weighted mean of all categories.</li>
+                <li>• If parts of the site are JS-locked or time out, we show partial results instead of guessing.</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-4">🤖 Why it matters</h3>
+              <p className="text-muted-foreground mb-2">
+                AI assistants don't just "read" — they chunk, extract, and cross-check.
+              </p>
+              <p className="text-muted-foreground">
+                The closer your site is to being machine-friendly, the more likely it is to show up as the cited source in AI-generated answers.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-4">📚 Learn more (external references)</h3>
+              <ul className="space-y-2 text-muted-foreground">
+                <li>• Google Search Central — AI Overviews: How it works</li>
+                <li>• Google Developers — Core Web Vitals</li>
+                <li>• W3C — Web Content Accessibility Guidelines (WCAG) 2.1</li>
+                <li>• Schema.org — Structured Data reference</li>
+                <li>• OpenAI — Crawling and llms.txt</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-8">
-      {/* Overall Attention Score */}
+      {/* Overall Score Header */}
       <Card className="border-primary/30 shadow-md">
         <CardHeader>
-          <CardTitle className="flex items-center gap-3 text-xl font-serif">
-            <TrendingUp className="w-6 h-6 text-primary" />
-            AI Comprehension Analysis
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            How well AI systems can understand and interpret your website's content and purpose
-          </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="w-6 h-6 text-primary" />
+              <div>
+                <CardTitle className="text-xl font-serif">AI Comprehension Analysis</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  How well AI systems can understand and interpret your website's content and purpose
+                </p>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowInfoModal(true)}
+              className="gap-2"
+            >
+              <Info className="w-4 h-4" />
+              How it works
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between mb-6">
@@ -88,173 +211,92 @@ export function AttentionCards({ results }: AttentionCardsProps) {
           />
           <div className="paper-meta">
             <p className="text-sm italic text-muted-foreground">
-              {getWittyCopy('seo', scores.overall)}
+              Attention may be all you need in AI, but websites need structure, speed, and trust.
             </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Individual Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {cards.map((card) => {
-          const Icon = card.icon;
-          const status = getScoreStatus(card.score);
-          
-          return (
-            <Card 
-              key={card.title} 
-              className="metric-card hover:shadow-lg transition-all duration-200"
-            >
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Icon className="w-5 h-5" />
-                  {card.title}
-                </CardTitle>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {card.description}
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-3xl font-bold text-foreground">{card.score}</div>
-                    <div className={`text-sm font-medium px-3 py-1 rounded-full ${
-                      status === 'excellent' ? 'bg-emerald-500/20 text-emerald-400' :
-                      status === 'good' ? 'bg-green-500/20 text-green-400' :
-                      status === 'warning' ? 'bg-amber-500/20 text-amber-400' :
-                      'bg-red-500/20 text-red-400'
-                    }`}>
-                      {status}
-                    </div>
-                  </div>
-                  
-                  <Progress value={card.score} status={status} className="h-2" />
-                  
-                  {/* Show business type and AI-readiness info if this is the schema card */}
-                  {card.title === 'Schema Markup' && results.tests.schema && (
-                    <div className="mt-2 space-y-2">
-                      {/* Business Type Detection */}
-                      {results.tests.schema.businessType && (
-                        <div className="space-y-1">
-                          <p className="text-xs font-medium text-foreground">Business Type:</p>
-                          <div className="flex items-center gap-2">
-                            <span className="inline-block px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded border border-blue-200 font-medium">
-                              {results.tests.schema.businessType.detected}
-                            </span>
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${
-                              results.tests.schema.businessType.confidence === 'high' ? 'bg-green-100 text-green-600' :
-                              results.tests.schema.businessType.confidence === 'medium' ? 'bg-yellow-100 text-yellow-600' :
-                              'bg-gray-100 text-gray-600'
-                            }`}>
-                              {results.tests.schema.businessType.confidence} confidence
-                            </span>
-                            {results.tests.schema.businessType.scope === 'english-only' && (
-                              <span className="text-xs px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded" title="Detection based on English keywords">
-                                🇬🇧 EN
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Schema Types */}
-                      {results.tests.schema.types && results.tests.schema.types.length > 0 && (
-                        <div className="space-y-1">
-                          <p className="text-xs font-medium text-foreground">Schema Types ({results.tests.schema.types.length}):</p>
-                          <div className="flex flex-wrap gap-1">
-                            {results.tests.schema.types.slice(0, 3).map((type: string, index: number) => (
-                              <span 
-                                key={index}
-                                className="inline-block px-1.5 py-0.5 text-xs bg-indigo-50 text-indigo-700 rounded border border-indigo-200"
-                              >
-                                {type}
-                              </span>
-                            ))}
-                            {results.tests.schema.types.length > 3 && (
-                              <span className="text-xs text-muted-foreground font-mono">
-                                +{results.tests.schema.types.length - 3}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  <p className="text-xs text-muted-foreground italic">
-                    {getWittyCopy(card.title.toLowerCase().split(' ')[0], card.score)}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+      {/* 5 Category Cards with Priority Grouping */}
+      <div className="space-y-6">
+        {/* Quick Wins Section */}
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <h3 className="text-lg font-semibold text-foreground">⚡ Quick Wins</h3>
+            <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">Lower effort, immediate impact</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {cards.filter(card => card.priority === 'Quick Win').map((card) => (
+              <CategoryCard key={card.title} card={card} />
+            ))}
+          </div>
+        </div>
+
+        {/* Strategic Section */}
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <h3 className="text-lg font-semibold text-foreground">🎯 Strategic</h3>
+            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">Higher effort, long-term value</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {cards.filter(card => card.priority === 'Strategic').map((card) => (
+              <CategoryCard key={card.title} card={card} />
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Technical Details (Academic Paper Style) */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg border-b border-border pb-3">
-            <FileText className="w-5 h-5" />
-            Technical Analysis Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="academic-prose">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Methodology */}
-            <div>
-              <h4 className="academic-subsection text-foreground font-medium">Methodology</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>• <strong className="text-foreground">Mode:</strong> {results.mode} analysis</li>
-                <li>• <strong className="text-foreground">Execution time:</strong> {results.executionTime}ms</li>
-                <li>• <strong className="text-foreground">Timestamp:</strong> {new Date(results.timestamp).toLocaleString()}</li>
-                <li>• <strong className="text-foreground">Target:</strong> <code className="text-primary">{results.url}</code></li>
-              </ul>
-            </div>
+      {/* Info Modal */}
+      {showInfoModal && <InfoModal />}
 
-            {/* Key Findings */}
-            <div>
-              <h4 className="academic-subsection text-foreground font-medium">Key Findings</h4>
-              <div className="space-y-2 text-sm">
-                {results.tests.seo && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">SEO Title Length:</span>
-                    <span className="font-mono">{results.tests.seo.title?.length || 0} chars</span>
-                  </div>
-                )}
-                {results.tests.performance && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Response Time:</span>
-                    <span className="font-mono">{results.tests.performance.responseTime}ms</span>
-                  </div>
-                )}
-                {results.tests.accessibility && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Accessibility Issues:</span>
-                    <span className="font-mono">{results.tests.accessibility.issues?.length || 0}</span>
-                  </div>
-                )}
-                {results.tests.schema && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Schema Types:</span>
-                    <span className="font-mono">{results.tests.schema.types?.length || 0}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Academic-style conclusion */}
-          <div className="mt-6 pt-6 border-t border-border">
-            <p className="text-sm text-muted-foreground italic leading-relaxed">
-              <strong className="text-foreground">AI Comprehension Assessment:</strong> Your website achieves an AI readiness score of{' '}
-              <span className="text-foreground font-semibold">{scores.overall}/100</span>, indicating{' '}
-              <span className="text-primary">{getScoreStatus(scores.overall)}</span> machine comprehension capability.
-              This reflects how effectively AI systems can understand your business, content, and purpose.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
     </div>
+  );
+}
+
+// CategoryCard component
+function CategoryCard({ card }: { card: any }) {
+  const Icon = card.icon;
+  const status = getScoreStatus(card.score);
+  
+  return (
+    <Card className="metric-card hover:shadow-lg transition-all duration-200 h-full">
+      <CardHeader className="pb-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Icon className="w-5 h-5" />
+            <div>
+              <CardTitle className="text-base leading-tight">{card.title}</CardTitle>
+              <span className="text-xs text-muted-foreground font-mono">{card.subtitle}</span>
+            </div>
+          </div>
+          <span className={`text-xs px-2 py-1 rounded-full ${
+            card.priority === 'Quick Win' 
+              ? 'bg-green-100 text-green-700' 
+              : 'bg-blue-100 text-blue-700'
+          }`}>
+            {card.priority}
+          </span>
+        </div>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {card.description}
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="text-2xl font-bold text-foreground">{card.score}</div>
+            <div className={`text-sm font-medium px-3 py-1 rounded-full ${
+              status === 'excellent' ? 'bg-emerald-500/20 text-emerald-400' :
+              status === 'good' ? 'bg-green-500/20 text-green-400' :
+              status === 'warning' ? 'bg-amber-500/20 text-amber-400' :
+              'bg-red-500/20 text-red-400'
+            }`}>
+              {status}
+            </div>
+          </div>
+          <Progress value={card.score} status={status} className="h-2" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -1,56 +1,33 @@
-# Dockerfile for SEO Audit Backend - Cloud Run Optimized
-# Following DevOps best practices for production deployment
-
+# Minimal working Dockerfile - Authentication fix only
 FROM node:20-slim
 
-# Install curl for health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
-# Security: Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-
-# Set working directory
 WORKDIR /app
 
-# Security: Copy package files first for better layer caching
+# Copy package.json but remove "type": "module" to avoid ES module issues
 COPY package*.json ./
-
-# Install only production dependencies
-# No Playwright needed - using Browserless.io for headless browsing
 ENV NODE_ENV=production
-RUN npm ci --only=production --no-audit --no-fund && \
-    npm cache clean --force
+RUN npm ci --only=production --no-audit --no-fund && npm cache clean --force
 
-# Copy application code
-COPY server.js ./
-COPY services/ ./services/
-COPY utils/ ./utils/
-COPY config/ ./config/
+# Ensure CommonJS runtime even if repo has "type": "module"
+RUN sed -i '/"type"\s*:\s*"module"/d' package.json || true
 
-# Create minimal utils structure if it doesn't exist
-RUN mkdir -p utils && \
-    echo 'const log = { info: console.log, warn: console.warn, error: console.error }; module.exports = { logger: log };' > utils/logger.js
+# Copy application files
+COPY . .
 
-# Security: Change ownership to non-root user
-RUN chown -R appuser:appuser /app
+# Ensure package.json stays CommonJS after copy
+RUN sed -i '/"type"\s*:\s*"module"/d' package.json || true
 
-# Switch to non-root user
-USER appuser
+# Verify app code is CommonJS (no .mjs or type: module) excluding node_modules
+RUN echo "Verifying app code is CJS..." \
+ && ! find . -path ./node_modules -prune -o -type f -name "*.mjs" -print | grep . \
+ && ! find . -path ./node_modules -prune -o -type f -name "package.json" -exec grep -l '\"type\"[[:space:]]*:[[:space:]]*\"module\"' {} \; | grep . \
+ || (echo "ESM artifacts detected in app code" && exit 1)
 
-# Environment variables
-ENV NODE_ENV=production
-ENV PORT=8080
-
-# Production optimizations for Cloud Run
-ENV NODE_OPTIONS="--max-old-space-size=1536"
-ENV UV_THREADPOOL_SIZE=128
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:$PORT/api/health || exit 1
-
-# Expose port
 EXPOSE 8080
 
-# Start the application
+USER node
+
+ENV PORT=8080
+ENV ENABLE_LOCAL_PLAYWRIGHT=0
+
 CMD ["node", "server.js"]

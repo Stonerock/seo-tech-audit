@@ -33,10 +33,10 @@ export function BusinessValueSection({ results }: BusinessValueSectionProps) {
         benefit: 'AI tools can identify and describe your business',
         timeframe: '1-2 hours'
       });
-    } else if (results.tests.schema.types.length < 3) {
+    } else if (results.tests.schema?.types?.length && results.tests.schema.types.length < 3) {
       opportunities.push({
         area: 'AI Understanding',
-        current: `AI sees ${results.tests.schema.types.length} content type(s)`,
+        current: `AI sees ${results.tests.schema?.types?.length || 0} content type(s)`,
         opportunity: 'Add more schema types to improve AI comprehension',
         benefit: 'Better representation in AI search results'
       });
@@ -60,7 +60,7 @@ export function BusinessValueSection({ results }: BusinessValueSectionProps) {
         });
       }
 
-      if (!results.tests.seo.description || results.tests.seo.description.length < 100) {
+      if (!results.tests.seo?.description || results.tests.seo.description.length < 100) {
         issues.push({
           type: 'warning',
           area: 'AI Summarization',
@@ -147,6 +147,88 @@ export function BusinessValueSection({ results }: BusinessValueSectionProps) {
 
   const getImpactBg = (type: string) => {
     return type === 'critical' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200';
+  };
+
+  const getImplementationSteps = () => {
+    const steps = [];
+
+    // Only show schema if missing or insufficient
+    if (!results.tests.schema || results.tests.schema.totalSchemas === 0) {
+      steps.push(
+        <div key="schema" className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+          <h4 className="font-semibold text-foreground mb-2">🚨 Priority 1: Add Structured Data</h4>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            <li>• Add Organization schema to your homepage</li>
+            <li>• Include business name, address, phone number, and website</li>
+            <li>• Add appropriate schema for your business type (LocalBusiness, Store, etc.)</li>
+            <li>• Test your structured data with Google's Rich Results Test</li>
+          </ul>
+        </div>
+      );
+    }
+
+    // Only show content issues if they exist
+    const contentIssues = [];
+    if (results.tests.seo?.h1Count !== 1) {
+      contentIssues.push("• Fix heading structure (use exactly one H1 per page)");
+    }
+    if (!results.tests.seo?.description || results.tests.seo.description.length < 100) {
+      contentIssues.push("• Write comprehensive meta descriptions (120-160 characters)");
+    }
+    if (!results.tests.seo?.title || results.tests.seo.title.length < 30) {
+      contentIssues.push("• Improve page title length and descriptiveness");
+    }
+    
+    if (contentIssues.length > 0) {
+      steps.push(
+        <div key="content" className="p-4 bg-secondary/50 rounded-lg border border-border">
+          <h4 className="font-semibold text-foreground mb-2">📝 Content Structure Issues</h4>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            {contentIssues.map((issue, idx) => <li key={idx}>{issue}</li>)}
+          </ul>
+        </div>
+      );
+    }
+
+    // Only show technical issues if they exist
+    const technicalIssues = [];
+    if (!results.tests.files?.sitemap?.exists) {
+      technicalIssues.push("• Create and submit an XML sitemap");
+    }
+    if (!results.tests.files?.robots?.exists) {
+      technicalIssues.push("• Add robots.txt file with proper directives");
+    }
+    if (results.tests.performance && results.tests.performance.responseTime > 3000) {
+      technicalIssues.push("• Optimize page loading speeds (currently slow)");
+    }
+    if ((results.tests.accessibility?.imagesWithoutAlt || 0) > 0) {
+      technicalIssues.push(`• Add alt text to ${results.tests.accessibility?.imagesWithoutAlt} images`);
+    }
+
+    if (technicalIssues.length > 0) {
+      steps.push(
+        <div key="technical" className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+          <h4 className="font-semibold text-foreground mb-2">🔧 Technical Fixes Needed</h4>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            {technicalIssues.map((issue, idx) => <li key={idx}>{issue}</li>)}
+          </ul>
+        </div>
+      );
+    }
+
+    // If everything looks good, show congratulations
+    if (steps.length === 0) {
+      steps.push(
+        <div key="success" className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
+          <h4 className="font-semibold text-foreground mb-2">🎉 Great Work!</h4>
+          <p className="text-sm text-muted-foreground">
+            Your website is well-optimized for AI search engines. Consider adding llms.txt file for additional AI training preferences (optional).
+          </p>
+        </div>
+      );
+    }
+
+    return steps;
   };
 
   return (
@@ -306,45 +388,21 @@ export function BusinessValueSection({ results }: BusinessValueSectionProps) {
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => setShowImplementationGuide(!showImplementationGuide)}
+              onClick={() => {
+                console.log('Implementation guide button clicked, current state:', showImplementationGuide);
+                setShowImplementationGuide(!showImplementationGuide);
+              }}
+              className="transition-all duration-200 hover:bg-primary/10"
             >
               {showImplementationGuide ? 'Hide Guide' : 'Show Implementation Steps'}
-              <ArrowRight className="w-4 h-4 ml-2" />
+              <ArrowRight className={`w-4 h-4 ml-2 transition-transform duration-200 ${showImplementationGuide ? 'rotate-90' : ''}`} />
             </Button>
           </CardTitle>
         </CardHeader>
-        {showImplementationGuide && (
-          <CardContent>
-            <div className="space-y-4">
-              <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
-                <h4 className="font-semibold text-foreground mb-2">Priority 1: Add Structured Data</h4>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>• Add Organization schema to your homepage</li>
-                  <li>• Include business name, address, phone number, and website</li>
-                  <li>• Add appropriate schema for your business type (LocalBusiness, Store, etc.)</li>
-                  <li>• Test your structured data with Google's Rich Results Test</li>
-                </ul>
-              </div>
-              
-              <div className="p-4 bg-secondary/50 rounded-lg border border-border">
-                <h4 className="font-semibold text-foreground mb-2">Priority 2: Optimize Content Structure</h4>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>• Use exactly one H1 tag per page that clearly describes the page topic</li>
-                  <li>• Create logical heading hierarchy (H1 → H2 → H3)</li>
-                  <li>• Write comprehensive meta descriptions (120-160 characters)</li>
-                  <li>• Use descriptive, keyword-rich page titles</li>
-                </ul>
-              </div>
-
-              <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
-                <h4 className="font-semibold text-foreground mb-2">Priority 3: Technical Foundations</h4>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>• Create and submit an XML sitemap</li>
-                  <li>• Add robots.txt file with proper directives</li>
-                  <li>• Optimize page loading speeds (under 2 seconds)</li>
-                  <li>• Ensure mobile-friendly responsive design</li>
-                </ul>
-              </div>
+{showImplementationGuide && (
+          <CardContent className="transition-all duration-300 ease-in-out border-t border-border pt-4">
+            <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+              {getImplementationSteps()}
             </div>
           </CardContent>
         )}
