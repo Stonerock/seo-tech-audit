@@ -379,8 +379,8 @@ class OptimizedAuditOrchestrator {
                     results[aeoIndex].value : { error: results[aeoIndex].reason?.message };
             }
 
-            // Add PageSpeed Insights data if API key is available and not in fast mode
-            if (process.env.PAGESPEED_API_KEY && options.includePSI !== false && !options.fastMode) {
+            // Add PageSpeed Insights data if enabled and not in fast mode
+            if (process.env.USE_PSI_METRICS === 'true' && options.includePSI !== false) {
                 logger.info('Adding PageSpeed Insights data to lightweight audit...');
                 try {
                     const { PageSpeedInsights } = require('./pagespeed-insights');
@@ -591,8 +591,8 @@ class OptimizedAuditOrchestrator {
                 }
             }
 
-            // Add PageSpeed Insights data if API key is available and not in fast mode
-            if (process.env.PAGESPEED_API_KEY && options.includePSI !== false && !options.fastMode) {
+            // Add PageSpeed Insights data if enabled and not in fast mode
+            if (process.env.USE_PSI_METRICS === 'true' && options.includePSI !== false) {
                 logger.info('Fetching PageSpeed Insights data...');
                 try {
                     const { PageSpeedInsights } = require('./pagespeed-insights');
