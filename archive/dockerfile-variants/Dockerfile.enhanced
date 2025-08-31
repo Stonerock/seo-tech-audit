@@ -1,0 +1,36 @@
+FROM --platform=linux/amd64 node:18-alpine
+
+WORKDIR /app
+
+# Install dependencies for native modules if needed
+RUN apk add --no-cache python3 make g++
+
+# Copy package files
+COPY package*.json ./
+
+# Clean package.json of ES module configs
+RUN echo "Removing ES module configurations..." && \
+    sed -i '/.*"type".*:.*"module".*/d' package.json && \
+    sed -i '/.*"module".*:.*/d' package.json && \
+    echo "✅ Package.json cleanup complete"
+
+# Install dependencies with legacy peer deps
+RUN npm ci --only=production --legacy-peer-deps --silent
+
+# Copy source code
+COPY . .
+
+# Final cleanup
+RUN sed -i '/.*"type".*:.*"module".*/d' package.json && \
+    sed -i '/.*"module".*:.*/d' package.json
+
+# Remove unnecessary files
+RUN rm -f Dockerfile.* deploy-*.sh *.backup .gcloudignore server-probe.js
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:8080/healthz || exit 1
+
+# Use server.js (the integrated version)
+EXPOSE 8080
+CMD ["node", "server.js"]
