@@ -5,6 +5,18 @@ dotenv.config();
 const express = require('express');
 const cors = require('cors');
 
+// Polyfill browser APIs for Node.js environment
+if (typeof global.File === 'undefined') {
+  global.File = class File {
+    constructor(bits, name, options = {}) {
+      this.bits = bits;
+      this.name = name;
+      this.type = options.type || '';
+      this.lastModified = options.lastModified || Date.now();
+    }
+  };
+}
+
 const app = express();
 
 // Middleware
@@ -31,11 +43,69 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// Wire in the minimal audit routes (working with Browserless)
-app.use('/api', require('./routes/audit-minimal'));
+// Wire in the comprehensive audit orchestrator 
+const OptimizedAuditOrchestrator = require('./services/audit-orchestrator.optimized');
+const orchestrator = new OptimizedAuditOrchestrator();
 
-// Wire in the surgical probe for debugging (can be removed later)
-app.use('/', require('./routes/probe'));
+// Audit endpoints
+app.post('/api/audit', async (req, res) => {
+  try {
+    const { url, fastMode, enableJS, includeFullReport } = req.body;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    console.log(`🔍 Starting ${fastMode ? 'fast' : 'comprehensive'} audit for: ${url}`);
+    
+    // Force enable PSI metrics for comprehensive analysis
+    process.env.USE_PSI_METRICS = 'true';
+    
+    const results = await orchestrator.performEnhancedAudit(url, {
+      fastMode: Boolean(fastMode),
+      enableJS: Boolean(enableJS),
+      includeFullReport: Boolean(includeFullReport),
+      includePSI: true
+    });
+
+    res.json(results);
+  } catch (error) {
+    console.error('Audit error:', error);
+    res.status(500).json({ 
+      error: 'Audit failed',
+      message: error.message 
+    });
+  }
+});
+
+app.get('/api/audit', async (req, res) => {
+  try {
+    const { url, fastMode, enableJS } = req.query;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    console.log(`🔍 Starting ${fastMode === 'true' ? 'fast' : 'comprehensive'} audit for: ${url}`);
+    
+    // Force enable PSI metrics for comprehensive analysis
+    process.env.USE_PSI_METRICS = 'true';
+    
+    const results = await orchestrator.performEnhancedAudit(url, {
+      fastMode: fastMode === 'true',
+      enableJS: enableJS === 'true',
+      includePSI: true
+    });
+
+    res.json(results);
+  } catch (error) {
+    console.error('Audit error:', error);
+    res.status(500).json({ 
+      error: 'Audit failed',
+      message: error.message 
+    });
+  }
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {

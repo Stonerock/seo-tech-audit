@@ -213,8 +213,8 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
             </div>
             <div className="space-y-3">
               <div className="text-xs text-muted-foreground">
-                <p>Tested on: {psiData.environment.emulatedDevice || 'Mobile Device'}</p>
-                {psiData.environment.networkThrottling && (
+                <p>Tested on: {psiData.environment?.emulatedDevice || 'Mobile Device'}</p>
+                {psiData.environment?.networkThrottling && (
                   <p>Network throttling: {psiData.environment.networkThrottling}ms latency</p>
                 )}
               </div>
