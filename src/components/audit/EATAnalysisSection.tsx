@@ -9,10 +9,25 @@ interface EATAnalysisSectionProps {
 }
 
 export function EATAnalysisSection({ eatResult }: EATAnalysisSectionProps) {
-  const overallStatus = getScoreStatus(eatResult.overallScore);
-  const expertiseStatus = getScoreStatus(eatResult.expertise.score);
-  const authorityStatus = getScoreStatus(eatResult.authoritativeness.score);
-  const trustStatus = getScoreStatus(eatResult.trustworthiness.score);
+  // Safety checks for undefined properties
+  if (!eatResult || typeof eatResult.overallScore === 'undefined') {
+    return (
+      <Card className="border-amber-200 bg-amber-50/50">
+        <CardContent className="p-6">
+          <div className="text-center text-muted-foreground">
+            <Shield className="w-8 h-8 mx-auto mb-2" />
+            <p>E-A-T analysis data not available</p>
+            <p className="text-xs mt-1">Analysis may have failed or timed out</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  const overallStatus = getScoreStatus(eatResult.overallScore || 0);
+  const expertiseStatus = getScoreStatus(eatResult.expertise?.score || 0);
+  const authorityStatus = getScoreStatus(eatResult.authoritativeness?.score || 0);
+  const trustStatus = getScoreStatus(eatResult.trustworthiness?.score || 0);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -39,7 +54,7 @@ export function EATAnalysisSection({ eatResult }: EATAnalysisSectionProps) {
         <CardContent>
           <div className="flex items-center justify-between mb-4">
             <div className="space-y-1">
-              <div className="score-display">{eatResult.overallScore}</div>
+              <div className="score-display">{eatResult.overallScore || 0}</div>
               <div className="text-sm text-muted-foreground">
                 E-A-T Authority Index
               </div>
@@ -50,7 +65,7 @@ export function EATAnalysisSection({ eatResult }: EATAnalysisSectionProps) {
               </div>
             </div>
           </div>
-          <Progress value={eatResult.overallScore} status={overallStatus} className="h-3 mb-3" />
+          <Progress value={eatResult.overallScore || 0} status={overallStatus} className="h-3 mb-3" />
           
           <div className="paper-meta">
             <p className="text-sm font-medium mb-1">E-A-T Scoring Formula</p>
@@ -91,21 +106,21 @@ export function EATAnalysisSection({ eatResult }: EATAnalysisSectionProps) {
           <CardContent>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <div className="font-mono text-2xl font-bold text-primary">{eatResult.expertise.score}</div>
+                <div className="font-mono text-2xl font-bold text-primary">{eatResult.expertise?.score || 0}</div>
                 <div className={`text-xs font-medium px-2 py-1 rounded ${getStatusColor(expertiseStatus)}`}>
                   {expertiseStatus}
                 </div>
               </div>
               
-              <Progress value={eatResult.expertise.score} status={expertiseStatus} className="h-1.5" />
+              <Progress value={eatResult.expertise?.score || 0} status={expertiseStatus} className="h-1.5" />
               
               <div className="space-y-2">
                 <div className="text-xs font-medium text-foreground">Authors Detected:</div>
-                {eatResult.expertise.authors.length > 0 ? (
+                {eatResult.expertise?.authors?.length > 0 ? (
                   eatResult.expertise.authors.map((author, idx) => (
                     <div key={idx} className="text-xs text-muted-foreground font-mono bg-muted/20 p-2 rounded">
-                      <div className="font-medium text-foreground">{author.name}</div>
-                      <div className="text-xs">Source: {author.source} • Confidence: {Math.round(author.confidence * 100)}%</div>
+                      <div className="font-medium text-foreground">{author.name || 'Unknown'}</div>
+                      <div className="text-xs">Source: {author.source || 'N/A'} • Confidence: {Math.round((author.confidence || 0) * 100)}%</div>
                     </div>
                   ))
                 ) : (
