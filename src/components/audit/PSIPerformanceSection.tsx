@@ -137,12 +137,12 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium text-sm">Largest Contentful Paint</h4>
-                  <p className="text-xl font-bold">{psiData.performance.metrics.lcp}</p>
+                  <p className="text-xl font-bold">{psiData.performance.metrics?.lcp || 'N/A'}</p>
                 </div>
                 <Clock className="w-5 h-5 text-muted-foreground" />
               </div>
-              <div className={`text-xs px-2 py-1 rounded border ${getVitalColor(psiData.performance.coreWebVitals.lcp)}`}>
-                {getVitalLabel(psiData.performance.coreWebVitals.lcp)}
+              <div className={`text-xs px-2 py-1 rounded border ${getVitalColor(psiData.performance.coreWebVitals?.lcp)}`}>
+                {getVitalLabel(psiData.performance.coreWebVitals?.lcp)}
               </div>
             </div>
 
@@ -151,12 +151,12 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium text-sm">First Contentful Paint</h4>
-                  <p className="text-xl font-bold">{psiData.performance.metrics.fcp}</p>
+                  <p className="text-xl font-bold">{psiData.performance.metrics?.fcp || 'N/A'}</p>
                 </div>
                 <TrendingUp className="w-5 h-5 text-muted-foreground" />
               </div>
-              <div className={`text-xs px-2 py-1 rounded border ${getVitalColor(psiData.performance.coreWebVitals.fcp)}`}>
-                {getVitalLabel(psiData.performance.coreWebVitals.fcp)}
+              <div className={`text-xs px-2 py-1 rounded border ${getVitalColor(psiData.performance.coreWebVitals?.fcp)}`}>
+                {getVitalLabel(psiData.performance.coreWebVitals?.fcp)}
               </div>
             </div>
 
@@ -165,12 +165,12 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium text-sm">Cumulative Layout Shift</h4>
-                  <p className="text-xl font-bold">{psiData.performance.metrics.cls}</p>
+                  <p className="text-xl font-bold">{psiData.performance.metrics?.cls || 'N/A'}</p>
                 </div>
                 <Shield className="w-5 h-5 text-muted-foreground" />
               </div>
-              <div className={`text-xs px-2 py-1 rounded border ${getVitalColor(psiData.performance.coreWebVitals.cls)}`}>
-                {getVitalLabel(psiData.performance.coreWebVitals.cls)}
+              <div className={`text-xs px-2 py-1 rounded border ${getVitalColor(psiData.performance.coreWebVitals?.cls)}`}>
+                {getVitalLabel(psiData.performance.coreWebVitals?.cls)}
               </div>
             </div>
 
@@ -179,12 +179,12 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium text-sm">Interaction to Next Paint</h4>
-                  <p className="text-xl font-bold">{psiData.performance.metrics.inp}</p>
+                  <p className="text-xl font-bold">{psiData.performance.metrics?.inp || 'N/A'}</p>
                 </div>
                 <Activity className="w-5 h-5 text-muted-foreground" />
               </div>
-              <div className={`text-xs px-2 py-1 rounded border ${getVitalColor(psiData.performance.coreWebVitals.inp)}`}>
-                {getVitalLabel(psiData.performance.coreWebVitals.inp)}
+              <div className={`text-xs px-2 py-1 rounded border ${getVitalColor(psiData.performance.coreWebVitals?.inp)}`}>
+                {getVitalLabel(psiData.performance.coreWebVitals?.inp)}
               </div>
             </div>
           </div>
@@ -204,11 +204,11 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Speed Index</span>
-                <span className="font-medium">{psiData.performance.metrics.speedIndex}</span>
+                <span className="font-medium">{psiData.performance.metrics?.speedIndex || 'N/A'}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Total Blocking Time</span>
-                <span className="font-medium">{psiData.performance.metrics.tbt}</span>
+                <span className="font-medium">{psiData.performance.metrics?.tbt || 'N/A'}</span>
               </div>
             </div>
             <div className="space-y-3">
@@ -224,7 +224,7 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
       </Card>
 
       {/* Performance Opportunities */}
-      {psiData.opportunities.length > 0 && (
+      {psiData.opportunities && psiData.opportunities.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
