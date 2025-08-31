@@ -1,327 +1,101 @@
 # SEO Audit Tool
 
-An enterprise-grade SEO and technical audit platform for digital agencies and developers. Because "attention is all you need" in AI, but apparently you also need proper schema markup, multi-bot analysis, and enterprise-grade infrastructure to handle client workloads.
+A technical SEO audit platform that analyzes websites for performance, accessibility, and AI optimization.
 
 ## Features
 
-### Core Analysis
-- **Single Page Analysis**: Complete SEO, accessibility, and performance audit
-- **Sitemap Crawling**: Analyze entire websites (up to 200 pages)
-- **Schema Validation**: Automatic content type detection and schema recommendations
-- **AI Readiness**: Optimization for Google AI Overviews and LLM crawlers
-- **Fix Priorities**: Actionable task list with effort estimates and impact analysis
-- **Multiple Export Formats**: CSV reports, action plans, and client-ready summaries
+- Single page and sitemap-based website analysis
+- SEO, performance, and accessibility audits
+- Schema markup validation and recommendations
+- AI optimization scoring for search visibility
+- Priority-based fix recommendations
+- Export reports in multiple formats
 
-### Enterprise Features
-- **Multi-Bot Analysis**: Comprehensive analysis of 11+ AI crawlers including GPTBot, Claude, Perplexity
-- **Audit Queue System**: Priority-based job management with concurrent processing
-- **Memory Monitoring**: Automatic resource management and cleanup
-- **Professional Logging**: Winston-based logging with multiple transports
-- **Modular Architecture**: Clean separation of concerns for maintainability
-
-### AI Optimization Features ✨
-
-Because the robots are taking over search results, might as well help them understand your content:
-
-- **🏆 AI Surfaces Readiness Score**: Comprehensive 0-100 scoring system with 6 weighted sub-metrics for AI optimization
-- **Google AI Overview Optimization**: Featured snippet potential, entity recognition, Q&A structure analysis
-- **Content Structure Analysis**: AI-readable hierarchy, optimal paragraph lengths, content completeness scoring
-
-#### AI Surfaces Readiness Score
-
-Our proprietary scoring system evaluates content readiness for AI systems across 6 key dimensions:
-
-- **Answer Clarity (25%)**: Clear headings, Q&A format, direct answers, readability
-- **Structured Data (20%)**: Schema.org markup, JSON-LD implementation, AI-friendly schemas
-- **Extractable Facts (20%)**: Factual content, data points, statistics, concrete information
-- **Citations & Sources (15%)**: External links, authoritative sources, credible references
-- **Content Recency (10%)**: Last modified dates, fresh content, current information
-- **Technical Optimization (10%)**: Page speed, mobile-friendly, robots.txt accessibility
-
-**Unique Features:**
-- Interactive scoring methodology explanation
-- Detailed per-metric analysis and recommendations
-- Integration with Fix Priorities for actionable tasks
-- Export functionality for client reports
-- Visual dashboard with gradient scoring display
-
-## Tech Stack
-
-- **Frontend**: Vanilla HTML/CSS/JS with Tailwind CSS
-- **Backend**: Node.js + Express (modular architecture)
-- **Analysis**: Puppeteer, Lighthouse, axe-core
-- **Queue System**: Priority-based job management with EventEmitter
-- **Monitoring**: Memory tracking with automatic cleanup
-- **Logging**: Winston with daily rotation and multiple transports
-- **Testing**: Jest with comprehensive unit and integration tests
-- **External APIs**: PageSpeed Insights, WebPageTest (optional)
-
-## Quick Start
-
-### Prerequisites
-- Node.js 18+ 
-- npm
-
-### Installation
+## Installation
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd seo-audit-tool
-
-# Install dependencies
+git clone https://github.com/Stonerock/seo-tech-audit.git
+cd seo-tech-audit
 npm install
-
-# Start the server
 npm start
 ```
 
-The tool will be available at `http://localhost:3001`
-
-### First Run
-- Puppeteer will download Chromium automatically (may take a few minutes)
-- No additional configuration required for basic usage
+The application runs at `http://localhost:8080`
 
 ## Configuration
 
-### Environment Variables (Optional)
-
-Create a `.env` file in the project root:
+Create a `.env` file:
 
 ```env
-# External API keys (optional)
-PSI_API_KEY=your_pagespeed_insights_key
-WPT_API_KEY=your_webpagetest_key
-WPT_LOCATION=eu-west-1
-
-# Server configuration
-PORT=3001
-
-# Sitemap analysis limits
-SITEMAP_MAX_URLS=50
-
-# Enable Lighthouse by default
-LIGHTHOUSE=1
+PORT=8080
+PAGESPEED_API_KEY=your_api_key_here
+USE_PSI_METRICS=true
+NODE_ENV=production
+API_KEYS=your_api_key_1,your_api_key_2
 ```
-
-### API Keys Setup
-
-**PageSpeed Insights**: Get your API key from [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-
-**WebPageTest**: Register at [WebPageTest](https://www.webpagetest.org/getkey.php)
 
 ## Usage
 
-### Single Page Audit
+### Web Interface
+1. Open the application in your browser
+2. Enter a URL to analyze
+3. Choose analysis options (fast mode, JavaScript rendering)
+4. View results and export reports
 
-1. Enter a URL in the input field
-2. Optionally enable Lighthouse (slower but more detailed, like a thorough code review)
-3. Click "Full Analysis"
-4. Review results and try not to cry at the accessibility score
-5. Export reports and prepare your client presentation
-
-### Sitemap Analysis
-
-1. Enter a website URL
-2. Set the number of pages to analyze (1-200, default 50 because we're not monsters)
-3. Click "Sitemap Scan"
-4. Get comprehensive site-wide analysis with schema recommendations
-5. Watch as the tool finds schema issues you didn't know existed
-
-### Fix Priorities
-
-After any audit (the moment of truth):
-1. Click "Fix Priorities" to see actionable tasks ranked by urgency
-2. Tasks are categorized by urgency (Critical = fix now, Low = someday maybe)
-3. Each task includes effort estimate and business impact (so you can prioritize properly)
-4. Export as CSV for client reports or Markdown for your development backlog
-
-### AI Surfaces Readiness Analysis
-
-The tool's flagship feature provides comprehensive AI optimization scoring:
-- **AI Surfaces Readiness Score**: 0-100 scoring with 6 weighted sub-metrics for complete AI optimization
-- **Interactive analysis**: Click the (i) icon to understand scoring methodology
-- **Detailed breakdown**: "Detailed Analysis" button opens comprehensive per-metric analysis
-- **Actionable insights**: Specific recommendations for each sub-metric
-- **Export reports**: Download detailed AI readiness reports for clients
-- **Fix Priorities integration**: AI issues automatically appear in actionable task lists
-
-Additional AI Analysis:
-- **Google AI Overview optimization**: Featured snippet potential and entity recognition
-- **Content structure scoring**: AI-readable hierarchy and content completeness
-
-## API Endpoints
-
-### Core Endpoints
+### API
 
 ```bash
+# Single page audit
+GET /api/audit?url=https://example.com
+
 # Health check
 GET /api/health
 
-# Single page audit
-POST /api/audit
-Content-Type: application/json
-{
-  "url": "https://example.com",
-  "lighthouse": true
-}
-
-# Sitemap-based audit
-POST /api/sitemap-audit
-Content-Type: application/json
-{
-  "url": "https://example.com",
-  "maxUrls": 50
-}
-
-# Generate llms.txt
-POST /api/llms/generate
-Content-Type: application/json
-{
-  "url": "https://example.com"
-}
-
-# Clear cache
-POST /api/cache/clear
+# API documentation
+GET /api/docs
 ```
 
-### Enterprise Queue Endpoints
+## Security Features
 
-```bash
-# Queue an audit
-POST /api/audit/queue
-Content-Type: application/json
-{
-  "url": "https://example.com",
-  "priority": 2
-}
+- API key authentication required in production
+- Rate limiting (10 requests per 15 minutes for audits)
+- SSRF protection blocks private networks
+- Input validation for all URLs
+- Security headers on all responses
 
-# Get queue status
-GET /api/audit/queue/status
+## Directory Structure
 
-# Get job status
-GET /api/audit/job/{jobId}
-
-# Cancel job
-DELETE /api/audit/job/{jobId}
-
-# Batch queue
-POST /api/audit/batch/queue
-Content-Type: application/json
-{
-  "urls": ["https://example1.com", "https://example2.com"],
-  "priority": 3
-}
 ```
-
-### System Monitoring
-
-```bash
-# Memory status
-GET /api/system/memory
-
-# Cache statistics
-GET /api/cache/stats
-
-# System health
-GET /api/health
+├── config/          # Configuration files
+├── deployment/      # Deployment scripts
+├── docs/           # Documentation
+├── middleware/     # Security and middleware
+├── services/       # Core business logic
+├── tests/          # Test suites
+├── utils/          # Utility functions
+└── src/            # Frontend source
 ```
 
 ## Development
 
-### Scripts
+```bash
+npm run dev         # Development server with auto-reload
+npm test            # Run security tests
+npm run lint        # Code linting
+```
+
+## API Authentication
+
+In production, include an API key in requests:
 
 ```bash
-npm start       # Production server
-npm run dev     # Development with nodemon
-npm test        # Run tests (placeholder)
+# Header method
+curl -H "X-API-Key: your_key" https://api.example.com/audit?url=https://example.com
+
+# Query parameter method
+curl https://api.example.com/audit?url=https://example.com&api_key=your_key
 ```
-
-### Project Structure
-
-```
-├── server.js                      # Main Express server
-├── index.html                     # Frontend application
-├── package.json                   # Dependencies and scripts
-├── .env.example                   # Environment template
-├── routes/
-│   └── audit.js                   # API route handlers
-├── services/
-│   ├── audit-orchestrator.js      # Main audit orchestration
-│   ├── audit-queue.js             # Enterprise queue system
-│   ├── bot-policy-analyzer.js     # Multi-bot analysis
-│   └── memory-monitor.js          # Memory monitoring and cleanup
-├── utils/
-│   ├── cache.js                   # LRU caching system
-│   ├── logger.js                  # Winston logging service
-│   ├── validation.js              # Input validation
-│   └── helpers.js                 # Utility functions
-├── tests/
-│   ├── unit/                      # Unit tests
-│   └── integration/               # Integration tests
-└── logs/                          # Log files (auto-generated)
-```
-
-### Adding New Audit Tests
-
-1. Create test function in `server.js`
-2. Add to main audit pipeline
-3. Update frontend display logic
-4. Include in fix priorities system
-
-## Troubleshooting
-
-### Common Issues
-
-**Puppeteer Download Fails**
-```bash
-# Skip download and use system Chrome
-PUPPETEER_SKIP_DOWNLOAD=1 npm install
-# Set Chrome path
-export PUPPETEER_EXECUTABLE_PATH="/usr/bin/google-chrome"
-```
-
-**Port Already in Use**
-```bash
-PORT=3002 npm start
-```
-
-**Memory Issues with Large Sites**
-- Reduce `SITEMAP_MAX_URLS`
-- Increase Node.js memory: `node --max-old-space-size=4096 server.js`
-
-**Lighthouse Timeouts**
-- Disable Lighthouse for problematic sites
-- Check network connectivity and site response times
-
-### Performance Tips
-
-- Use environment variables for production
-- Enable caching for repeated audits
-- Set appropriate `SITEMAP_MAX_URLS` for your use case
-- Consider running multiple instances for high-volume usage
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-### Code Style
-
-- Use consistent indentation (2 spaces)
-- Add JSDoc comments for complex functions
-- Follow existing patterns for audit functions
-- Test with various website types
 
 ## License
 
-MIT License - see LICENSE file for details
-
----
-
-**Built for digital agencies and SEO professionals who need enterprise-grade infrastructure**  
-
-Comprehensive auditing with actionable insights and enterprise-grade reliability. Features modular architecture, comprehensive testing, and unique multi-bot analysis capabilities. Because "attention is all you need" in AI, but you also need the infrastructure to deliver it at scale.
+MIT
