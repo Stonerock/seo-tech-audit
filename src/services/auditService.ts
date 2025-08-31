@@ -70,6 +70,15 @@ export class AuditService {
 
       const result: AuditResult = await response.json();
       
+      // Debug logging for troubleshooting
+      console.log('📊 Audit result received:', {
+        url: result.url,
+        executionTime: result.executionTime,
+        testsKeys: Object.keys(result.tests || {}),
+        hasPsiMetrics: !!result.psiMetrics,
+        psiMetricsKeys: result.psiMetrics ? Object.keys(result.psiMetrics) : 'none'
+      });
+      
       // Cache the result
       this.cache.set(cacheKey, { data: result, timestamp: Date.now() });
       
