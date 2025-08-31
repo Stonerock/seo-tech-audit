@@ -13,11 +13,11 @@ export class AuditService {
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
   constructor() {
-    // Environment-based URL configuration (no more hardcoded URLs!)
+    // Environment-based URL configuration
     this.baseURL = import.meta.env.VITE_BACKEND_URL || 
       (import.meta.env.MODE === 'development' 
-        ? 'http://localhost:3001'
-        : 'https://seo-audit-service-458683085682.us-central1.run.app'
+        ? 'http://localhost:8080'
+        : 'https://seo-audit-backend-458683085682.us-central1.run.app'
       );
     
     console.log('🔗 Backend URL:', this.baseURL);
