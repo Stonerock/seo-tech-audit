@@ -98,7 +98,30 @@ class PageSpeedInsights {
       }
 
       const data = await response.json();
+      
+      // Debug logging for PSI API issues
+      console.log(`[PSI] API Response status: ${response.status}`);
+      if (data.lighthouseResult) {
+        console.log(`[PSI] Lighthouse categories:`, Object.keys(data.lighthouseResult.categories || {}));
+        const fcpAudit = data.lighthouseResult.audits?.['first-contentful-paint'];
+        console.log(`[PSI] FCP audit sample:`, { 
+          score: fcpAudit?.score, 
+          displayValue: fcpAudit?.displayValue,
+          numericValue: fcpAudit?.numericValue 
+        });
+      } else {
+        console.log(`[PSI] No lighthouseResult in response`);
+      }
+      
       const processed = this.processInsights(data);
+      
+      // Check if processed data is valid, if not use fallback
+      if (this.hasInvalidMetrics(processed)) {
+        console.log(`[PSI] Invalid metrics detected, using fallback data for ${this.getDomain(url)}`);
+        const fallback = this.getFallbackPSIData(url);
+        this.setCache(cacheKey, fallback);
+        return { ...fallback, cached: false };
+      }
       
       // Cache the result
       this.setCache(cacheKey, processed);
@@ -114,8 +137,9 @@ class PageSpeedInsights {
         stack: error?.stack?.split('\n').slice(0, 3)
       });
       
-      // Return null for downstream handling, but don't fail the entire audit
-      return null;
+      // Return fallback data instead of null for better user experience
+      console.log(`[PSI] Using fallback data for ${this.getDomain(url)}`);
+      return { ...this.getFallbackPSIData(url), cached: false };
     }
   }
 
@@ -133,12 +157,13 @@ class PageSpeedInsights {
       performance: {
         score: Math.round((lhr.categories?.performance?.score || 0) * 100),
         metrics: {
-          fcp: lhr.audits?.['first-contentful-paint']?.displayValue || 'N/A',
-          lcp: lhr.audits?.['largest-contentful-paint']?.displayValue || 'N/A',
-          inp: lhr.audits?.['interaction-to-next-paint']?.displayValue || lhr.audits?.['max-potential-fid']?.displayValue || 'N/A', // INP with FID fallback
-          cls: lhr.audits?.['cumulative-layout-shift']?.displayValue || 'N/A',
-          speedIndex: lhr.audits?.['speed-index']?.displayValue || 'N/A',
-          tbt: lhr.audits?.['total-blocking-time']?.displayValue || 'N/A'
+          fcp: this.formatMetricValue(lhr.audits?.['first-contentful-paint']?.displayValue) || 'N/A',
+          lcp: this.formatMetricValue(lhr.audits?.['largest-contentful-paint']?.displayValue) || 'N/A',
+          inp: this.formatMetricValue(lhr.audits?.['interaction-to-next-paint']?.displayValue) || 
+               this.formatMetricValue(lhr.audits?.['max-potential-fid']?.displayValue) || 'N/A',
+          cls: this.formatMetricValue(lhr.audits?.['cumulative-layout-shift']?.displayValue) || 'N/A',
+          speedIndex: this.formatMetricValue(lhr.audits?.['speed-index']?.displayValue) || 'N/A',
+          tbt: this.formatMetricValue(lhr.audits?.['total-blocking-time']?.displayValue) || 'N/A'
         },
         // Core Web Vitals status
         coreWebVitals: {
@@ -312,9 +337,68 @@ class PageSpeedInsights {
   }
 
   getMetricStatus(score) {
+    if (score === null || score === undefined) return 'unavailable';
     if (score >= 0.9) return 'good';
     if (score >= 0.5) return 'needs-improvement';
     return 'poor';
+  }
+
+  /**
+   * Format metric values safely, handling null/undefined cases
+   */
+  formatMetricValue(value) {
+    if (value === null || value === undefined) {
+      return null; // Return null so the || fallback works properly
+    }
+    // Handle the "undefinedms" case that was appearing
+    if (typeof value === 'string' && value.includes('undefined')) {
+      return null;
+    }
+    return value; // Return as-is if it exists
+  }
+
+  /**
+   * Check if processed metrics contain invalid values
+   */
+  hasInvalidMetrics(processed) {
+    if (!processed || !processed.performance || !processed.performance.metrics) {
+      return true;
+    }
+    
+    const metrics = processed.performance.metrics;
+    return Object.values(metrics).some(value => 
+      typeof value === 'string' && value.includes('undefined')
+    );
+  }
+
+  /**
+   * Get fallback PSI data when API is unavailable
+   */
+  getFallbackPSIData(url) {
+    return {
+      url,
+      timestamp: new Date().toISOString(),
+      performance: {
+        score: 0,
+        metrics: {
+          fcp: 'API unavailable',
+          lcp: 'API unavailable', 
+          inp: 'API unavailable',
+          cls: 'API unavailable',
+          speedIndex: 'API unavailable',
+          tbt: 'API unavailable'
+        },
+        coreWebVitals: {
+          fcp: 'unavailable',
+          lcp: 'unavailable', 
+          cls: 'unavailable',
+          inp: 'unavailable'
+        }
+      },
+      fieldData: false,
+      source: 'fallback-no-api-access',
+      note: 'PageSpeed Insights data unavailable. This may be due to API quota limits or configuration issues.'
+    };
   }
 
   /**

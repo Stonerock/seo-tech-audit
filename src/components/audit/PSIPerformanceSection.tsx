@@ -3,6 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import type { PSIResult } from '@/types/audit';
 
+// Utility function to clean metric values
+const cleanMetricValue = (value: string | undefined | null): string => {
+  if (!value || value === 'null' || value === 'undefined' || value.includes('undefined')) {
+    return 'API unavailable';
+  }
+  return value;
+};
+
 interface PSIPerformanceSectionProps {
   psiData: PSIResult;
 }
@@ -137,7 +145,7 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium text-sm">Largest Contentful Paint</h4>
-                  <p className="text-xl font-bold">{psiData.performance.metrics?.lcp || 'N/A'}</p>
+                  <p className="text-xl font-bold">{cleanMetricValue(psiData.performance.metrics?.lcp)}</p>
                 </div>
                 <Clock className="w-5 h-5 text-muted-foreground" />
               </div>
@@ -151,7 +159,7 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium text-sm">First Contentful Paint</h4>
-                  <p className="text-xl font-bold">{psiData.performance.metrics?.fcp || 'N/A'}</p>
+                  <p className="text-xl font-bold">{cleanMetricValue(psiData.performance.metrics?.fcp)}</p>
                 </div>
                 <TrendingUp className="w-5 h-5 text-muted-foreground" />
               </div>
@@ -165,7 +173,7 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium text-sm">Cumulative Layout Shift</h4>
-                  <p className="text-xl font-bold">{psiData.performance.metrics?.cls || 'N/A'}</p>
+                  <p className="text-xl font-bold">{cleanMetricValue(psiData.performance.metrics?.cls)}</p>
                 </div>
                 <Shield className="w-5 h-5 text-muted-foreground" />
               </div>
@@ -179,7 +187,7 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium text-sm">Interaction to Next Paint</h4>
-                  <p className="text-xl font-bold">{psiData.performance.metrics?.inp || 'N/A'}</p>
+                  <p className="text-xl font-bold">{cleanMetricValue(psiData.performance.metrics?.inp)}</p>
                 </div>
                 <Activity className="w-5 h-5 text-muted-foreground" />
               </div>
@@ -204,11 +212,11 @@ export function PSIPerformanceSection({ psiData }: PSIPerformanceSectionProps) {
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Speed Index</span>
-                <span className="font-medium">{psiData.performance.metrics?.speedIndex || 'N/A'}</span>
+                <span className="font-medium">{cleanMetricValue(psiData.performance.metrics?.speedIndex)}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Total Blocking Time</span>
-                <span className="font-medium">{psiData.performance.metrics?.tbt || 'N/A'}</span>
+                <span className="font-medium">{cleanMetricValue(psiData.performance.metrics?.tbt)}</span>
               </div>
             </div>
             <div className="space-y-3">
