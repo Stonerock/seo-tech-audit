@@ -10,7 +10,8 @@ export default {
   // Test file patterns
   testMatch: [
     '**/__tests__/**/*.js',
-    '**/?(*.)+(spec|test).js'
+    '**/?(*.)+(spec|test).js',
+    '**/tests/**/*.test.js'
   ],
   
   // Setup files
@@ -30,6 +31,7 @@ export default {
     'services/**/*.js',
     'utils/**/*.js',
     'routes/**/*.js',
+    'middleware/**/*.js',
     '!**/node_modules/**',
     '!tests/**',
     '!**/*.test.js',

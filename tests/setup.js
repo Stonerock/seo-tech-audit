@@ -4,6 +4,8 @@
 // Set test environment variables
 process.env.NODE_ENV = 'test';
 process.env.PORT = '3001';
+process.env.API_KEYS = 'test-key-1,test-key-2';
+process.env.USE_PSI_METRICS = 'false';
 
 // Extend Jest matchers
 expect.extend({
