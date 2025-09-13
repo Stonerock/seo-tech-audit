@@ -12,6 +12,7 @@ class OptimizedAuditOrchestrator {
         this.botAnalyzer = null;
         this.eatAnalyzer = null; // E-A-T analysis for content authority
         this.jsRenderer = null; // Lightweight JavaScript renderer
+        this.schemaMatrix = null; // Sprint 5c: Schema type matrix analyzer
         
         // Performance optimization settings
         this.requestCache = new Map();
@@ -305,16 +306,20 @@ class OptimizedAuditOrchestrator {
         try {
             // Global timeout for entire audit - adaptive based on site complexity and browserless usage
             const globalTimeoutMs = options.fastMode ? 25000 : options.enableJS ? 180000 : 60000; // 25s fast, 180s browserless, 60s normal
-            const auditTimeout = setTimeout(() => {
-                throw new Error(`Audit timeout exceeded ${globalTimeoutMs / 1000} seconds`);
-            }, globalTimeoutMs);
+
+            // Create timeout promise that rejects instead of throwing
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error(`Audit timeout exceeded ${globalTimeoutMs / 1000} seconds`));
+                }, globalTimeoutMs);
+            });
 
             // Parallel execution of lightweight checks with adaptive timeouts
-            const auditOptions = { 
-                ...options, 
+            const auditOptions = {
+                ...options,
                 adaptiveTimeout: options.fastMode ? false : true // Use longer timeouts for non-fast mode
             };
-            
+
             const checks = [
                 this.checkBasicSEO(url, auditOptions),
                 this.checkBasicPerformance(url, auditOptions),
@@ -332,11 +337,14 @@ class OptimizedAuditOrchestrator {
                 checks.push(this.checkLighthousePerformance(url));
             }
 
-            // Add AEO (Answer Engine Optimization) analysis
-            checks.push(this.checkAEOReadiness(url, auditOptions));
+            // Add AEO (Answer Engine Optimization) analysis using optimized AI analyzer
+            checks.push(this.checkAEOReadinessOptimized(url, auditOptions));
 
-            const results = await Promise.allSettled(checks);
-            clearTimeout(auditTimeout);
+            // Race between audit completion and timeout
+            const results = await Promise.race([
+                Promise.allSettled(checks),
+                timeoutPromise
+            ]);
 
             const auditResults = {
                 url,
@@ -354,6 +362,14 @@ class OptimizedAuditOrchestrator {
                 psiMetrics: results[7].status === 'fulfilled' ? results[7].value : { error: results[7].reason?.message },
                 mode: options.includeLighthouse ? 'enhanced' : 'lightweight'
             };
+
+            // Sprint 5c: Map PSI data to performance field for consistent access
+            if (auditResults.psiMetrics && !auditResults.psiMetrics.error) {
+                auditResults.performance = auditResults.psiMetrics;
+                console.log('[PSI] Performance data mapped from PSI results');
+            } else {
+                console.log('[PSI] No performance data available:', auditResults.psiMetrics?.error || 'PSI metrics unavailable');
+            }
             
             // Debug logging for mode and jsAnalysis
             console.log('[DEBUG] Lightweight audit results:', {
@@ -494,10 +510,10 @@ class OptimizedAuditOrchestrator {
                             seo: await this.analyzeRenderedSEO($js, renderResult.html, url),
                             accessibility: await this.analyzeRenderedAccessibility($js),
                             schema: await this.analyzeRenderedSchema($js),
-                            // Re-run AEO analysis with rendered content for better list/heading detection
-                            aeo: await this.checkAEOReadiness(url, { 
+                            // Re-run AEO analysis with rendered content using optimized analyzer
+                            aeo: await this.checkAEOReadinessOptimized(url, {
                                 renderedContent: { html: renderResult.html },
-                                phase: 'javascript' 
+                                phase: 'javascript'
                             }),
                             metrics: renderResult.metrics,
                             jsMetrics: renderResult.jsMetrics,
@@ -524,6 +540,14 @@ class OptimizedAuditOrchestrator {
                 timestamp: new Date().toISOString(),
                 executionTime: Date.now() - startTime,
                 mode: jsResults ? 'two-pass' : 'static-only',
+                // Sprint 5a: Add crawl mode validation and user feedback
+                crawlInfo: {
+                    requestedMode: options.enableJS ? 'two-pass' : 'static-only',
+                    actualMode: jsResults ? 'two-pass' : 'static-only',
+                    jsRenderingRequested: Boolean(options.enableJS),
+                    jsRenderingSuccessful: Boolean(jsResults),
+                    failureReason: options.enableJS && !jsResults ? 'JS renderer failed or timed out' : null
+                },
                 phases: {
                     static: {
                         completed: true,
@@ -1172,11 +1196,14 @@ class OptimizedAuditOrchestrator {
             const psi = new PageSpeedInsights();
             
             if (!psi.enabled) {
+                console.log('[PSI] Service disabled - USE_PSI_METRICS:', process.env.USE_PSI_METRICS);
                 return {
                     enabled: false,
                     message: 'PSI disabled - set USE_PSI_METRICS=true to enable'
                 };
             }
+
+            console.log('[PSI] Service enabled, fetching insights for:', url);
 
             const insights = await psi.getInsights(url, {
                 strategy: 'mobile',
@@ -1191,32 +1218,70 @@ class OptimizedAuditOrchestrator {
                 };
             }
 
-            // Extract Core Web Vitals from CrUX field data
+            // Sprint 5c: Enhanced CrUX field data integration
             const fieldData = insights.originLoadingExperience || insights.loadingExperience;
             const coreWebVitals = {};
+            const cruxData = {
+                hasFieldData: Boolean(fieldData),
+                overall_category: fieldData?.overall_category || null,
+                dataSource: insights.originLoadingExperience ? 'origin' : 
+                           insights.loadingExperience ? 'url-specific' : 'none',
+                metrics: {}
+            };
 
             if (fieldData && fieldData.metrics) {
-                // Map PSI field data to our format
+                // Map PSI field data with enhanced details
                 const metrics = fieldData.metrics;
                 
                 if (metrics.FIRST_CONTENTFUL_PAINT_MS) {
                     const fcp = metrics.FIRST_CONTENTFUL_PAINT_MS;
                     coreWebVitals.fcp = fcp.category || this.categorizeFCP(fcp.percentile);
+                    cruxData.metrics.fcp = {
+                        percentile: fcp.percentile,
+                        category: fcp.category,
+                        distributions: fcp.distributions
+                    };
                 }
                 
                 if (metrics.LARGEST_CONTENTFUL_PAINT_MS) {
                     const lcp = metrics.LARGEST_CONTENTFUL_PAINT_MS;
                     coreWebVitals.lcp = lcp.category || this.categorizeLCP(lcp.percentile);
+                    cruxData.metrics.lcp = {
+                        percentile: lcp.percentile,
+                        category: lcp.category,
+                        distributions: lcp.distributions
+                    };
                 }
                 
                 if (metrics.CUMULATIVE_LAYOUT_SHIFT_SCORE) {
                     const cls = metrics.CUMULATIVE_LAYOUT_SHIFT_SCORE;
                     coreWebVitals.cls = cls.category || this.categorizeCLS(cls.percentile);
+                    cruxData.metrics.cls = {
+                        percentile: cls.percentile,
+                        category: cls.category,
+                        distributions: cls.distributions
+                    };
                 }
                 
                 if (metrics.FIRST_INPUT_DELAY_MS) {
                     const fid = metrics.FIRST_INPUT_DELAY_MS;
                     coreWebVitals.fid = fid.category || this.categorizeFID(fid.percentile);
+                    cruxData.metrics.fid = {
+                        percentile: fid.percentile,
+                        category: fid.category,
+                        distributions: fid.distributions
+                    };
+                }
+
+                // Add Interaction to Next Paint (INP) if available
+                if (metrics.INTERACTION_TO_NEXT_PAINT) {
+                    const inp = metrics.INTERACTION_TO_NEXT_PAINT;
+                    coreWebVitals.inp = inp.category || this.categorizeINP(inp.percentile);
+                    cruxData.metrics.inp = {
+                        percentile: inp.percentile,
+                        category: inp.category,
+                        distributions: inp.distributions
+                    };
                 }
             }
 
@@ -1225,17 +1290,33 @@ class OptimizedAuditOrchestrator {
                 timestamp: new Date().toISOString(),
                 cached: insights.cached || false,
                 performance: {
-                    score: insights.lighthouseResult?.categories?.performance?.score || 0,
-                    coreWebVitals,
-                    metrics: {
-                        fcp: fieldData?.metrics?.FIRST_CONTENTFUL_PAINT_MS?.percentile + 'ms' || 'N/A',
-                        lcp: fieldData?.metrics?.LARGEST_CONTENTFUL_PAINT_MS?.percentile + 'ms' || 'N/A',
-                        fid: fieldData?.metrics?.FIRST_INPUT_DELAY_MS?.percentile + 'ms' || 'N/A',
-                        cls: fieldData?.metrics?.CUMULATIVE_LAYOUT_SHIFT_SCORE?.percentile || 'N/A'
+                    // Lab data (Lighthouse)
+                    labData: {
+                        score: insights.lighthouseResult?.categories?.performance?.score || 0,
+                        metrics: insights.lighthouseResult?.audits ? {
+                            fcp: insights.lighthouseResult.audits['first-contentful-paint']?.numericValue,
+                            lcp: insights.lighthouseResult.audits['largest-contentful-paint']?.numericValue,
+                            cls: insights.lighthouseResult.audits['cumulative-layout-shift']?.numericValue,
+                            fid: insights.lighthouseResult.audits['max-potential-fid']?.numericValue
+                        } : {}
+                    },
+                    // Field data (CrUX)
+                    fieldData: cruxData.hasFieldData ? {
+                        overall_category: cruxData.overall_category,
+                        dataSource: cruxData.dataSource,
+                        coreWebVitals,
+                        metrics: cruxData.metrics
+                    } : null,
+                    // Combined analysis
+                    analysis: {
+                        dataAvailability: {
+                            lab: Boolean(insights.lighthouseResult),
+                            field: cruxData.hasFieldData,
+                            recommendation: cruxData.hasFieldData ? 'Use field data (real user experience)' : 'Lab data only (synthetic testing)'
+                        }
                     }
                 },
-                fieldData: fieldData ? true : false,
-                source: 'google-psi-crux'
+                source: 'google-psi-enhanced'
             };
 
         } catch (error) {
@@ -1262,6 +1343,11 @@ class OptimizedAuditOrchestrator {
     
     categorizeFID(ms) {
         return ms <= 100 ? 'good' : ms <= 300 ? 'needs-improvement' : 'poor';
+    }
+
+    // Sprint 5c: Add INP categorization for enhanced CrUX support
+    categorizeINP(ms) {
+        return ms <= 200 ? 'good' : ms <= 500 ? 'needs-improvement' : 'poor';
     }
 
     // Check for basic files (robots.txt, sitemap variants, etc.)
@@ -1675,8 +1761,24 @@ class OptimizedAuditOrchestrator {
             // Analyze schema coverage for detected business type
             const schemaAnalysis = this.analyzeSchemaFields(schemaData, businessTypeResult.type, businessTypesConfig);
 
+            // Sprint 5c: Enhanced schema matrix analysis
+            if (!this.schemaMatrix) {
+                const SchemaTypeMatrix = require('./schema-type-matrix');
+                this.schemaMatrix = new SchemaTypeMatrix();
+            }
+
+            const matrixAnalysis = this.schemaMatrix.analyzeSchemaImplementation(
+                uniqueTypes, 
+                businessTypeResult.type
+            );
+
             // Calculate AI-readiness score based on schema coverage
-            const aiReadinessScore = this.calculateAIReadinessScore(schemaAnalysis, businessTypeResult, businessTypesConfig);
+            const aiReadinessDetails = this.calculateAIReadinessScore(schemaAnalysis, businessTypeResult, businessTypesConfig);
+            
+            // Sprint 5a backward compatibility: Extract numeric score for frontend compatibility
+            const aiReadinessScore = typeof aiReadinessDetails === 'object' && aiReadinessDetails.score !== undefined 
+                                   ? aiReadinessDetails.score 
+                                   : aiReadinessDetails;
 
             // Content validation - check for mismatches between schema and visible content
             const contentValidation = this.validateSchemaContentMatch(schemaData, $);
@@ -1715,6 +1817,10 @@ class OptimizedAuditOrchestrator {
                 fieldCoveragePercent: schemaAnalysis.coveragePercent,
                 contentValidation: contentValidation,
                 evidence: schemaEvidence, // DOM evidence for verification
+                // Sprint 5c: Enhanced schema matrix analysis
+                matrixAnalysis: matrixAnalysis,
+                // Sprint 5a: Detailed AI readiness info
+                aiReadinessDetails: typeof aiReadinessDetails === 'object' ? aiReadinessDetails : null,
                 // Legacy score for backward compatibility
                 score: aiReadinessScore
             };
@@ -1897,6 +2003,23 @@ class OptimizedAuditOrchestrator {
 
     // Calculate AI-readiness score based on schema coverage
     calculateAIReadinessScore(schemaAnalysis, businessTypeResult, businessTypesConfig) {
+        // Sprint 5a: Apply confidence-based suppression for business type readiness
+        const confidenceValue = typeof businessTypeResult.confidence === 'number' ? 
+                                 businessTypeResult.confidence : 
+                                 (businessTypeResult.confidence === 'high' ? 0.8 : 
+                                  businessTypeResult.confidence === 'medium' ? 0.6 : 0.2);
+        
+        // If confidence is below 50%, suppress type-specific readiness scoring
+        if (confidenceValue < 0.5) {
+            return {
+                score: 0,
+                suppressed: true,
+                reason: 'business_type_confidence_too_low',
+                confidence: confidenceValue,
+                suggestion: 'Add Organization schema with logo and contact information for better type detection'
+            };
+        }
+        
         // Base score from schema field coverage
         let score = schemaAnalysis.coveragePercent;
         
@@ -1968,7 +2091,12 @@ class OptimizedAuditOrchestrator {
             logger.info('Using two-pass audit with JavaScript rendering for enhanced list/heading detection');
             return await this.performTwoPassAudit(url, { ...options, enableJS: true });
         } else {
-            logger.info('JavaScript renderer not available or fast mode enabled, using lightweight audit');
+            // Sprint 5a: Log when full analysis was requested but JS renderer is unavailable
+            if (options.enableJS && !options.fastMode) {
+                logger.warn('⚠️ Full analysis requested but JavaScript renderer unavailable - falling back to static-only mode');
+            } else {
+                logger.info('JavaScript renderer not available or fast mode enabled, using lightweight audit');
+            }
             return await this.performLightweightAudit(url, options);
         }
     }
@@ -2234,6 +2362,80 @@ class OptimizedAuditOrchestrator {
         }
     }
 
+    // Optimized AEO analysis using our improved AI analyzer
+    async checkAEOReadinessOptimized(url, options = {}) {
+        try {
+            // Initialize optimized AI analyzer
+            if (!this.optimizedAIAnalyzer) {
+                const AIContentAnalyzer = require('./ai-analyzer');
+                this.optimizedAIAnalyzer = new AIContentAnalyzer();
+            }
+
+            // Use rendered content if available, otherwise fetch static
+            let $ = null;
+            if (options.renderedContent && options.renderedContent.html) {
+                const cheerio = require('cheerio');
+                $ = cheerio.load(options.renderedContent.html);
+            } else {
+                // Fetch static content using built-in fetch
+                const response = await fetch(url, {
+                    signal: AbortSignal.timeout(10000),
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (compatible; SEO-Audit-Tool/2.0; +https://seo-audit-tool.com)'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const html = await response.text();
+                const cheerio = require('cheerio');
+                $ = cheerio.load(html);
+            }
+
+            // Create mock tests object for compatibility
+            const mockTests = {
+                schema: { types: [] },
+                performance: {},
+                accessibility: {},
+                seo: {}
+            };
+
+            // Use our optimized AI analyzer
+            const analysis = await this.optimizedAIAnalyzer.analyzeAIReadiness($, mockTests, url);
+
+            // Transform to match expected AEO format for compatibility
+            return {
+                score: analysis.overallScore || 50,
+                language: analysis.language?.language || 'en',
+                executionTime: analysis.executionTime,
+                optimized: true, // Flag to show this used optimized analysis
+                fallback: analysis.fallback || false,
+                scoringProfile: analysis.scoringProfile,
+
+                // Map optimized results to AEO format
+                faq: {
+                    schemaDetected: false,
+                    patternsFound: 0,
+                    patternsScope: 'multilingual-safe'
+                },
+                headingStructure: analysis.contentStructure?.sectionGranularity || { score: 50 },
+                lists: analysis.subMetrics?.contentPatterns || { total: 0 },
+                conversationalTone: {
+                    score: analysis.contentStructure?.answerSignals?.score || 50,
+                    scope: 'multilingual-safe'
+                },
+                recommendations: analysis.recommendations || []
+            };
+
+        } catch (error) {
+            console.warn('Optimized AEO analysis failed, using fallback:', error.message);
+            // Fallback to original method
+            return await this.checkAEOReadiness(url, options);
+        }
+    }
+
     // Detect page language (simple heuristic)
     detectPageLanguage($) {
         const langAttr = $('html').attr('lang') || $('html').attr('xml:lang');
@@ -2336,29 +2538,64 @@ class OptimizedAuditOrchestrator {
         const recommendations = [];
         
         if (!factors.faqSchemaDetected && factors.faqPatternsFound === 0) {
+            // Sprint 5b: Enhanced actionable recommendations
             recommendations.push({
                 priority: 'high',
                 title: 'Add FAQ content',
                 description: 'Create FAQ section with structured data markup',
-                scope: 'multilingual-safe'
+                scope: 'multilingual-safe',
+                impact: 'Improves AEO eligibility by 25-40%',
+                timeEstimate: '2-4 hours',
+                implementation: {
+                    steps: [
+                        'Add FAQ section to page content',
+                        'Implement FAQPage schema markup',
+                        'Test with Google Rich Results Tool'
+                    ],
+                    codeExample: '{"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "...", "acceptedAnswer": {"@type": "Answer", "text": "..."}}]}'
+                }
             });
         }
         
         if (!factors.hasHierarchy) {
+            // Sprint 5b: Enhanced heading structure recommendations
             recommendations.push({
                 priority: 'medium',
                 title: 'Improve heading structure',
                 description: 'Use H1, H2, H3 hierarchy for better content organization',
-                scope: 'multilingual-safe'
+                scope: 'multilingual-safe',
+                impact: 'Improves content comprehension and AI readability by 15-20%',
+                timeEstimate: '1-2 hours',
+                implementation: {
+                    steps: [
+                        'Audit current heading structure',
+                        'Create logical H1 > H2 > H3 hierarchy',
+                        'Ensure one H1 per page',
+                        'Use descriptive heading text'
+                    ],
+                    codeExample: '<h1>Main Topic</h1><h2>Subtopic</h2><h3>Details</h3>'
+                }
             });
         }
         
         if (factors.listsTotal === 0) {
+            // Sprint 5b: Enhanced list structure recommendations
             recommendations.push({
                 priority: 'medium',
                 title: 'Add structured lists',
                 description: 'Use bullet points and numbered lists for scannable content',
-                scope: 'multilingual-safe'
+                scope: 'multilingual-safe',
+                impact: 'Improves content scannability and AI extraction by 10-15%',
+                timeEstimate: '30-60 minutes',
+                implementation: {
+                    steps: [
+                        'Identify key points that can be listed',
+                        'Convert paragraphs to bullet or numbered lists',
+                        'Use descriptive list items',
+                        'Consider nested lists for complex information'
+                    ],
+                    codeExample: '<ul><li>Key benefit 1</li><li>Key benefit 2</li></ul>'
+                }
             });
         }
         
