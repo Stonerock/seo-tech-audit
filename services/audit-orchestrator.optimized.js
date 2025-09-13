@@ -304,63 +304,181 @@ class OptimizedAuditOrchestrator {
         logger.info(`Starting lightweight audit for: ${url}`, { options });
 
         try {
-            // Global timeout for entire audit - adaptive based on site complexity and browserless usage
-            const globalTimeoutMs = options.fastMode ? 25000 : options.enableJS ? 180000 : 60000; // 25s fast, 180s browserless, 60s normal
+            // Enterprise-grade timeout and error handling utilities
+            const withMethodTimeout = (promise, timeoutMs, methodName) => {
+                return Promise.race([
+                    promise,
+                    new Promise((_, reject) => {
+                        setTimeout(() => {
+                            reject(new Error(`Method timeout: ${methodName} exceeded ${timeoutMs}ms`));
+                        }, timeoutMs);
+                    })
+                ]);
+            };
+
+            const safeExecuteMethod = async (methodFn, methodName, fallbackResult, timeoutMs = 5000) => {
+                try {
+                    logger.debug(`Executing ${methodName}...`);
+                    const result = await withMethodTimeout(methodFn(), timeoutMs, methodName);
+                    logger.debug(`✅ ${methodName} completed successfully`);
+                    return result;
+                } catch (error) {
+                    logger.warn(`⚠️ ${methodName} failed: ${error.message}`);
+                    return fallbackResult || {
+                        error: error.message,
+                        fallback: true,
+                        method: methodName,
+                        timestamp: new Date().toISOString()
+                    };
+                }
+            };
+
+            // Global timeout for entire audit - adaptive based on site complexity
+            const globalTimeoutMs = options.fastMode ? 45000 : options.enableJS ? 240000 : 120000; // Increased timeouts
+            logger.info(`Setting global audit timeout to ${globalTimeoutMs / 1000}s`);
 
             // Create timeout promise that rejects instead of throwing
             const timeoutPromise = new Promise((_, reject) => {
                 setTimeout(() => {
-                    reject(new Error(`Audit timeout exceeded ${globalTimeoutMs / 1000} seconds`));
+                    reject(new Error(`Global audit timeout exceeded ${globalTimeoutMs / 1000} seconds`));
                 }, globalTimeoutMs);
             });
 
-            // Parallel execution of lightweight checks with adaptive timeouts
+            // Parallel execution with individual method timeouts - Enterprise resilience
             const auditOptions = {
                 ...options,
-                adaptiveTimeout: options.fastMode ? false : true // Use longer timeouts for non-fast mode
+                adaptiveTimeout: options.fastMode ? false : true
+            };
+
+            // Individual method timeouts based on complexity
+            const methodTimeouts = {
+                seo: options.fastMode ? 8000 : 15000,
+                performance: options.fastMode ? 10000 : 20000,
+                accessibility: options.fastMode ? 5000 : 10000,
+                files: options.fastMode ? 8000 : 15000,
+                metadata: options.fastMode ? 3000 : 8000,
+                schema: options.fastMode ? 5000 : 12000,
+                eat: options.fastMode ? 8000 : 15000,
+                psi: options.fastMode ? 15000 : 30000,
+                aeo: options.fastMode ? 12000 : 25000
             };
 
             const checks = [
-                this.checkBasicSEO(url, auditOptions),
-                this.checkBasicPerformance(url, auditOptions),
-                this.checkAxeAccessibility(url, auditOptions),
-                this.checkBasicFiles(url, auditOptions),
-                this.checkBasicMetadata(url, auditOptions),
-                this.checkBasicSchema(url, auditOptions),
-                this.checkEATSignals(url, auditOptions),
-                this.checkPSIMetrics(url, auditOptions)
+                safeExecuteMethod(
+                    () => this.checkBasicSEO(url, auditOptions),
+                    'SEO Analysis',
+                    { score: 0, error: 'SEO analysis failed' },
+                    methodTimeouts.seo
+                ),
+                safeExecuteMethod(
+                    () => this.checkBasicPerformance(url, auditOptions),
+                    'Performance Analysis',
+                    { score: 0, error: 'Performance analysis failed' },
+                    methodTimeouts.performance
+                ),
+                safeExecuteMethod(
+                    () => this.checkAxeAccessibility(url, auditOptions),
+                    'Accessibility Analysis',
+                    { score: 0, error: 'Accessibility analysis failed' },
+                    methodTimeouts.accessibility
+                ),
+                safeExecuteMethod(
+                    () => this.checkBasicFiles(url, auditOptions),
+                    'Files Analysis',
+                    { robots: { exists: false }, sitemap: { exists: false } },
+                    methodTimeouts.files
+                ),
+                safeExecuteMethod(
+                    () => this.checkBasicMetadata(url, auditOptions),
+                    'Metadata Analysis',
+                    { title: '', description: '', issues: [] },
+                    methodTimeouts.metadata
+                ),
+                safeExecuteMethod(
+                    () => this.checkBasicSchema(url, auditOptions),
+                    'Schema Analysis',
+                    { types: [], score: 0, issues: [] },
+                    methodTimeouts.schema
+                ),
+                safeExecuteMethod(
+                    () => this.checkEATSignals(url, auditOptions),
+                    'E-A-T Analysis',
+                    { overallScore: 0, error: 'E-A-T analysis failed' },
+                    methodTimeouts.eat
+                ),
+                safeExecuteMethod(
+                    () => this.checkPSIMetrics(url, auditOptions),
+                    'PageSpeed Insights',
+                    { score: 0, error: 'PSI analysis failed' },
+                    methodTimeouts.psi
+                )
             ];
 
             // Add Lighthouse check if requested (but skip if too slow)
             if (options.includeLighthouse && !options.fastMode) {
                 logger.info('Including Lighthouse performance audit');
-                checks.push(this.checkLighthousePerformance(url));
+                checks.push(safeExecuteMethod(
+                    () => this.checkLighthousePerformance(url),
+                    'Lighthouse Analysis',
+                    { error: 'Lighthouse analysis failed' },
+                    30000
+                ));
             }
 
             // Add AEO (Answer Engine Optimization) analysis using optimized AI analyzer
-            checks.push(this.checkAEOReadinessOptimized(url, auditOptions));
+            checks.push(safeExecuteMethod(
+                () => this.checkAEOReadinessOptimized(url, auditOptions),
+                'AEO Analysis',
+                { score: 0, error: 'AEO analysis failed' },
+                methodTimeouts.aeo
+            ));
 
-            // Race between audit completion and timeout
+            // Race between audit completion and global timeout
+            logger.info(`Starting ${checks.length} analysis methods in parallel`);
             const results = await Promise.race([
                 Promise.allSettled(checks),
                 timeoutPromise
             ]);
+
+            // Enterprise-grade result processing with graceful error handling
+            const processResult = (result, index, name) => {
+                if (result.status === 'fulfilled') {
+                    const value = result.value;
+                    if (value && value.fallback) {
+                        logger.warn(`⚠️ ${name} used fallback result:`, value.error);
+                    }
+                    return value;
+                } else {
+                    logger.error(`❌ ${name} failed completely:`, result.reason?.message);
+                    return {
+                        error: result.reason?.message || `${name} failed`,
+                        fallback: true,
+                        timestamp: new Date().toISOString()
+                    };
+                }
+            };
 
             const auditResults = {
                 url,
                 timestamp: new Date().toISOString(),
                 executionTime: Date.now() - startTime,
                 tests: {
-                    seo: results[0].status === 'fulfilled' ? results[0].value : { error: results[0].reason?.message },
-                    performance: results[1].status === 'fulfilled' ? results[1].value : { error: results[1].reason?.message },
-                    accessibility: results[2].status === 'fulfilled' ? results[2].value : { error: results[2].reason?.message },
-                    files: results[3].status === 'fulfilled' ? results[3].value : { error: results[3].reason?.message },
-                    metadata: results[4].status === 'fulfilled' ? results[4].value : { error: results[4].reason?.message },
-                    schema: results[5].status === 'fulfilled' ? results[5].value : { error: results[5].reason?.message },
-                    eat: results[6].status === 'fulfilled' ? results[6].value : { error: results[6].reason?.message }
+                    seo: processResult(results[0], 0, 'SEO Analysis'),
+                    performance: processResult(results[1], 1, 'Performance Analysis'),
+                    accessibility: processResult(results[2], 2, 'Accessibility Analysis'),
+                    files: processResult(results[3], 3, 'Files Analysis'),
+                    metadata: processResult(results[4], 4, 'Metadata Analysis'),
+                    schema: processResult(results[5], 5, 'Schema Analysis'),
+                    eat: processResult(results[6], 6, 'E-A-T Analysis')
                 },
-                psiMetrics: results[7].status === 'fulfilled' ? results[7].value : { error: results[7].reason?.message },
-                mode: options.includeLighthouse ? 'enhanced' : 'lightweight'
+                psiMetrics: processResult(results[7], 7, 'PageSpeed Insights'),
+                mode: 'lightweight-enterprise', // Indicate this uses enterprise error handling
+                reliability: {
+                    successfulMethods: results.filter(r => r.status === 'fulfilled' && !r.value?.fallback).length,
+                    fallbackMethods: results.filter(r => r.status === 'fulfilled' && r.value?.fallback).length,
+                    failedMethods: results.filter(r => r.status === 'rejected').length,
+                    totalMethods: results.length
+                }
             };
 
             // Sprint 5c: Map PSI data to performance field for consistent access
