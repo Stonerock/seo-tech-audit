@@ -215,31 +215,18 @@ class EATAnalyzer {
             seenAuthors.add(metaAuthor.toLowerCase());
         }
 
-        // 3. Byline patterns (medium confidence) - STRICT validation to prevent hallucination
-        const bylinePatterns = [
-            /by\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/gi,  // Max 3 words
-            /author:\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/gi,
-            /written\s+by\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/gi
-        ];
+        // 3. Byline patterns (medium confidence) - DISABLED to prevent hallucination
+        // The regex patterns were matching design text and code comments, creating fake authors
+        // Only use explicit meta tags and schema markup for author detection to ensure accuracy
 
-        const pageText = $('body').text();
-        bylinePatterns.forEach(pattern => {
-            let match;
-            while ((match = pattern.exec(pageText)) !== null) {
-                const authorName = match[1].trim();
-                
-                // STRICT VALIDATION: Only accept realistic author names
-                if (this.isValidAuthorName(authorName) && !seenAuthors.has(authorName.toLowerCase())) {
-                    authors.push({
-                        name: authorName,
-                        source: 'byline',
-                        confidence: 0.6,
-                        type: 'Person'
-                    });
-                    seenAuthors.add(authorName.toLowerCase());
-                }
-            }
-        });
+        // REMOVED: bylinePatterns matching that was causing hallucination issues
+        // - "by the Nordic sky" matched design text
+        // - "Ian McEwan" matched shader code comments
+        //
+        // For reliable author detection, only use:
+        // - Schema markup (highest confidence)
+        // - Meta author tags (medium confidence)
+        // - DO NOT scan arbitrary page text for "by X" patterns
 
         // Filter out low confidence authors (prevent showing unreliable data)
         const validAuthors = authors.filter(author => author.confidence >= 0.5);
