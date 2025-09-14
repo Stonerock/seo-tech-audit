@@ -2,6 +2,7 @@
 // Lightweight audit orchestrator with lazy loading of heavy dependencies
 
 const { logger } = require('../utils/logger');
+const httpClient = require('./http-client');
 
 class OptimizedAuditOrchestrator {
     constructor() {
@@ -333,8 +334,8 @@ class OptimizedAuditOrchestrator {
                 }
             };
 
-            // Global timeout for entire audit - adaptive based on site complexity
-            const globalTimeoutMs = options.fastMode ? 45000 : options.enableJS ? 240000 : 120000; // Increased timeouts
+            // Global timeout for entire audit - increased for complex sites
+            const globalTimeoutMs = options.fastMode ? 25000 : options.enableJS ? 120000 : 60000; // Realistic timeouts for complex sites
             logger.info(`Setting global audit timeout to ${globalTimeoutMs / 1000}s`);
 
             // Create timeout promise that rejects instead of throwing
@@ -352,15 +353,15 @@ class OptimizedAuditOrchestrator {
 
             // Individual method timeouts based on complexity
             const methodTimeouts = {
-                seo: options.fastMode ? 8000 : 15000,
-                performance: options.fastMode ? 10000 : 20000,
-                accessibility: options.fastMode ? 5000 : 10000,
-                files: options.fastMode ? 8000 : 15000,
-                metadata: options.fastMode ? 3000 : 8000,
-                schema: options.fastMode ? 5000 : 12000,
-                eat: options.fastMode ? 8000 : 15000,
-                psi: options.fastMode ? 15000 : 30000,
-                aeo: options.fastMode ? 12000 : 25000
+                seo: options.fastMode ? 3000 : 8000,
+                performance: options.fastMode ? 5000 : 10000,
+                accessibility: options.fastMode ? 2000 : 6000,
+                files: options.fastMode ? 3000 : 7000,
+                metadata: options.fastMode ? 2000 : 5000,
+                schema: options.fastMode ? 2000 : 8000,
+                eat: options.fastMode ? 3000 : 10000,
+                psi: options.fastMode ? 8000 : 20000,
+                aeo: options.fastMode ? 4000 : 12000
             };
 
             const checks = [
@@ -598,21 +599,58 @@ class OptimizedAuditOrchestrator {
             logger.info(`JavaScript detection: needsJS=${jsAnalysis?.needsJS}, confidence=${jsAnalysis?.confidence}`);
             logger.info(`Recommendation: ${jsAnalysis?.recommendation}`);
 
-            // Phase 2: JavaScript rendering (if needed and enabled)
+            // Phase 2: Parallel external API calls (JS rendering + PSI)
             let jsResults = null;
+            let psiResults = null;
+
             if (shouldUseJS && options.enableJS === true) {
                 logger.info('Phase 2: JavaScript rendering analysis');
-                
+
                 const jsRenderer = await this.loadJSRenderer();
                 if (jsRenderer) {
+                    // Start PSI and JS rendering in parallel for maximum efficiency
+                    const parallelPromises = [];
+
+                    // 1. JavaScript rendering promise
+                    const jsRenderingPromise = (async () => {
+                        try {
+                            const renderOptions = {
+                                includePerformance: options.includeLighthouse !== false,
+                                includeScreenshot: options.includeScreenshot !== false,
+                                timeout: options.timeout || 25000
+                            };
+                            return await jsRenderer.renderPage(url, renderOptions);
+                        } catch (error) {
+                            logger.warn('JavaScript rendering failed:', error.message);
+                            return { error: error.message };
+                        }
+                    })();
+                    parallelPromises.push(jsRenderingPromise);
+
+                    // 2. PSI data promise (if enabled)
+                    if (process.env.USE_PSI_METRICS === 'true' && options.includePSI !== false) {
+                        const psiPromise = (async () => {
+                            try {
+                                logger.info('Starting PageSpeed Insights data fetch in parallel...');
+                                const { PageSpeedInsights } = require('./pagespeed-insights');
+                                const psi = new PageSpeedInsights();
+                                return await psi.getInsights(url, {
+                                    categories: 'performance,seo,accessibility'
+                                });
+                            } catch (error) {
+                                logger.warn('PSI parallel fetch failed:', error.message);
+                                return null;
+                            }
+                        })();
+                        parallelPromises.push(psiPromise);
+                    }
+
+                    // Wait for both to complete
+                    logger.info(`Starting ${parallelPromises.length} external API calls in parallel`);
+                    const [renderResult, psiData] = await Promise.all(parallelPromises);
+                    psiResults = psiData;
+
                     try {
-                        // Enable Lighthouse for performance analysis when requested
-                        const renderOptions = {
-                            includePerformance: options.includeLighthouse !== false, // Default to true
-                            includeScreenshot: options.includeScreenshot !== false,
-                            timeout: options.timeout || 90000 // Increase browserless timeout to 90 seconds
-                        };
-                        const renderResult = await jsRenderer.renderPage(url, renderOptions);
                         
                         // Validate render result before processing
                         if (!renderResult || !renderResult.html || typeof renderResult.html !== 'string') {
@@ -733,16 +771,26 @@ class OptimizedAuditOrchestrator {
                 }
             }
 
-            // Add PageSpeed Insights data if enabled and not in fast mode
-            if (process.env.USE_PSI_METRICS === 'true' && options.includePSI !== false) {
-                logger.info('Fetching PageSpeed Insights data...');
+            // Use PageSpeed Insights data from parallel execution
+            if (psiResults && process.env.USE_PSI_METRICS === 'true' && options.includePSI !== false) {
+                logger.info('Adding PageSpeed Insights data from parallel execution...');
+                combinedResults.psiMetrics = psiResults;
+                combinedResults.tests.performance = {
+                    ...combinedResults.tests.performance,
+                    psi: psiResults.performance || null,
+                    coreWebVitals: psiResults.performance?.coreWebVitals || null
+                };
+                logger.info('PageSpeed Insights data added successfully');
+            } else if (process.env.USE_PSI_METRICS === 'true' && options.includePSI !== false && !shouldUseJS) {
+                // Fallback for static-only mode where PSI wasn't run in parallel
+                logger.info('Fetching PageSpeed Insights data for static-only audit...');
                 try {
                     const { PageSpeedInsights } = require('./pagespeed-insights');
                     const psi = new PageSpeedInsights();
                     const psiData = await psi.getInsights(url, {
                         categories: 'performance,seo,accessibility'
                     });
-                    
+
                     if (psiData) {
                         combinedResults.psiMetrics = psiData;
                         combinedResults.tests.performance = {
@@ -788,6 +836,7 @@ class OptimizedAuditOrchestrator {
             h1Count,
             h2Count,
             wordCount,
+            lang: $('html').attr('lang') || null, // Fix missing language detection in JS-rendered analysis
             method: 'js-rendered'
         };
     }
@@ -1050,6 +1099,7 @@ class OptimizedAuditOrchestrator {
                 wordCount,
                 https,
                 canonical,
+                lang: $('html').attr('lang') || null, // Fix missing language detection
                 score, // Add calculated score
                 scoreBreakdown, // Add detailed scoring breakdown
                 jsAnalysis, // Add JavaScript detection results
@@ -1242,21 +1292,14 @@ class OptimizedAuditOrchestrator {
 
     // Fallback basic accessibility check using cheerio
     async checkBasicAccessibilityFallback(url, options = {}) {
-        const fetch = require('node-fetch');
         const cheerio = require('cheerio');
 
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-            const response = await fetch(url, { 
-                signal: controller.signal,
+            // Use optimized HTTP client with connection pooling
+            const response = await httpClient.fetch(url, {
                 timeout: 10000,
-                headers: { 'User-Agent': 'SEO-Audit-Tool/2.1.0' },
-                size: 5 * 1024 * 1024 // 5MB limit
+                headers: { 'User-Agent': 'SEO-Audit-Tool/2.1.0' }
             });
-            
-            clearTimeout(timeoutId);
             
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
